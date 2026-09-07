@@ -1,0 +1,29 @@
+{
+  "name": "readint",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "A reading platform that feels like a book in hand.",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "check": "svelte-check --tsconfig ./tsconfig.json",
+    "test": "node --test \"src/**/*.test.ts\""
+  },
+  "dependencies": {
+    "dexie": "^4.4.5",
+    "epubjs": "^0.3.93",
+    "pdfjs-dist": "^6.3.289",
+    "perfect-freehand": "^1.2.3",
+    "tesseract.js": "^7.0.0"
+  },
+  "devDependencies": {
+    "@sveltejs/vite-plugin-svelte": "^7.3.0",
+    "@types/node": "^26.5.0",
+    "svelte": "^5.57.0",
+    "svelte-check": "^4.7.6",
+    "typescript": "^5.9.3",
+    "vite": "^8.2.2"
+  }
+}

@@ -1,0 +1,17 @@
+node_modules/
+dist/
+.vite/
+.svelte-kit/
+
+# Local editor/agent tooling, not project code
+.claude/
+
+.env
+.env.*
+!.env.example
+
+.firebase/
+firebase-debug.log
+
+.DS_Store
+*.local
