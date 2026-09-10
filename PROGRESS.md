@@ -1,9 +1,45 @@
 # Progress
 
-Working checklist. Update this as work lands — it's the handoff between sessions.
+The log of what has actually been built and proven. Update this as work lands —
+it is the handoff between sessions.
 
-**Status:** Phases 1-3 complete. Phase 4 (definitions, search, deploy) next.
+For the plan — every phase, what it covers, what is left — see `ROADMAP.md`.
+For the architecture and its invariants, see `AGENTS.md`.
+
+**Status:** Phases 0–3 complete, pushed to `main`. Phase 4 next.
 **Last updated:** 2026-09-10
+
+---
+
+## Start here next session
+
+Phase 4: definitions, in-document search, first deploy. Full checklist and
+notes in `ROADMAP.md`.
+
+First moves, in order:
+
+1. `DefinitionPopup.svelte` and `SearchPanel.svelte` are still Phase-0 stubs —
+   read them first, the shapes are already committed.
+2. Selection → popup. `TextLayer.commitSelection()` already shows how to get a
+   live selection and convert its rects; the popup needs the range rect for
+   placement, not quads.
+3. Wire dictionaryapi.dev for single words, hitting `getLookup`/`putLookup`
+   (already in `storage.ts`) **before** the network.
+4. The search normaliser — case, diacritics, ligatures, hyphen-at-line-break —
+   is pure and fiddly. Put it in its own module with its own `node --test` file
+   before wiring any UI to it.
+5. `/api/define` and deploy last, once the local half works.
+
+Careful: Phase 4 is the first thing that leaves the device. Only a term and one
+sentence of context may cross the network — never the document.
+
+Standing checks, all green as of this commit:
+
+```
+npm test      # 18 passing
+npm run check # 0 errors, 0 warnings across 339 files
+npm run build # clean; pdf.js splits into its own chunk
+```
 
 ---
 
@@ -160,57 +196,8 @@ single-device; worth a tab lock or a per-tab draft id when sync arrives.
 
 ---
 
-## Phase 4 — Definitions, search, first deploy
+## Phases 4–6 and beyond
 
-- [ ] Selection → popup, positioned from the range rect
-- [ ] dictionaryapi.dev for single words
-- [ ] `/api/define` — Hono on Cloud Functions gen2, Gemini Flash, term +
-      surrounding sentence
-- [ ] Dexie lookup cache keyed `(term, docId)`
-- [ ] `SearchPanel` — normalise case/diacritics/ligatures/hyphen-at-line-break
-- [ ] Search hits → quads, prev/next navigation
-- [ ] `firebase.json`: SPA rewrite + `/api/**` → function; deploy
-- [ ] `$1` budget alert, `maxInstances: 3`, per-IP rate limit
-
-**Verify:** "the" → dictionary. A technical phrase → AI fallback with the
-document's sense. Same phrase again → cache hit, no network request. Search a
-hyphenated line break and find it.
-
----
-
-## Phase 5 — OCR
-
-- [ ] `workers/ocr.worker.ts` — tesseract.js in a Web Worker
-- [ ] Scanned detection: < ~20 chars/page on a sample → queue OCR
-- [ ] Word boxes → `TextItem[]` in page units, persisted (`ocrDone`)
-- [ ] `ImageAdapter` — one image as a one-page document
-- [ ] Per-page progress UI
-
-**Verify:** a scanned PDF and a photo of a page both become selectable, and
-search + definitions work on them with no OCR-specific code path.
-
----
-
-## Phase 6 — EPUB
-
-- [ ] `EpubAdapter` — epub.js paginated + spread
-- [ ] CFI-based annotations (`Annotation.cfi`)
-- [ ] Band magnifier only; lens disabled for reflowable text
-- [ ] Chapter navigation
-
-**Verify:** highlight, reopen, highlight restored via CFI.
-
----
-
-## Deferred — needs a real backend
-
-Not scoped. Recorded so the architecture stays ready for it (stable annotation
-ids + `updatedAt`, single storage module, `DocAdapter` abstraction).
-
-- Accounts + cross-device sync (Firebase Auth + Firestore + Cloud Storage)
-- AI study layer: ask-this-document (RAG), summaries, flashcards from highlights
-  — brute-force cosine over Firestore-stored embeddings stays free for a single
-  document; a vector store is only needed for library-wide semantic search
-- Server OCR (Cloud Vision) and page tiling for 500MB+ scans
-- Export: flattened annotated PDF, notes to Markdown/Anki
-- Reading analytics + spaced repetition on highlights
+Moved to `ROADMAP.md` so the plan lives in one place and cannot drift out of
+sync with this log. It carries the full checklists for definitions/search/deploy
+(4), OCR (5), EPUB (6), the deferred backend work, and the known limitations.
