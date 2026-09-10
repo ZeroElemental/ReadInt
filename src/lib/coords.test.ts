@@ -7,7 +7,13 @@
 
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { quadToScreen, screenToQuad, mergeQuadsByLine, groupByLine } from './coords.ts'
+import {
+  quadToScreen,
+  screenToQuad,
+  mergeQuadsByLine,
+  groupByLine,
+  lineBoxes,
+} from './coords.ts'
 import type { ViewportLike } from './coords.ts'
 
 /** Mimics pdf.js PageViewport: scales, and flips the y-axis. */
@@ -90,4 +96,36 @@ test('a baseline further off than the tolerance starts a new line', () => {
   ])
 
   assert.deepEqual(ids, [0, 1])
+})
+
+test('line boxes span each line and come back top-down', () => {
+  const item = (str: string, x: number, y: number, w: number, lineId: number) => ({
+    str, lineId, quad: { x, y, w, h: 12 },
+  })
+  // Handed over in a jumbled order, as a text stream may well arrive.
+  const boxes = lineBoxes([
+    item('world', 60, 500, 40, 0),
+    item('second line', 10, 480, 90, 1),
+    item('hello', 10, 500, 45, 0),
+  ])
+
+  assert.equal(boxes.length, 2)
+  assert.equal(boxes[0].y, 500, 'line 0 is the upper line')
+  assert.equal(boxes[0].x, 10)
+  assert.equal(boxes[0].w, 90, 'spans "hello" through "world", gap included')
+  assert.equal(boxes[1].y, 480)
+  assert.equal(boxes[1].w, 90)
+})
+
+test('a line holds together even when its runs sit off the baseline', () => {
+  // A superscript shares its lineId but sits well above the baseline; it must
+  // not be split off, which is why lineBoxes ignores the tolerance.
+  const boxes = lineBoxes([
+    { str: 'x', lineId: 0, quad: { x: 10, y: 500, w: 20, h: 12 } },
+    { str: '2', lineId: 0, quad: { x: 30, y: 506, w: 6, h: 7 } },
+  ])
+
+  assert.equal(boxes.length, 1)
+  assert.equal(boxes[0].y, 500)
+  assert.equal(boxes[0].h, 13, 'the box covers baseline through superscript top')
 })

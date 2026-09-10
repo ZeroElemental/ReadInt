@@ -17,7 +17,7 @@
    */
   import { reader } from '../lib/reader.svelte.ts'
   import { quadToScreen } from '../lib/coords.ts'
-  import { getPageText, putPageText } from '../lib/storage.ts'
+  import { pageText } from '../adapters/index.ts'
   import type { PageGeometry } from '../adapters/types.ts'
   import type { TextItem } from '../lib/types.ts'
 
@@ -48,18 +48,11 @@
     let stale = false
     const index = pageIndex
 
-    ;(async () => {
-      const cached = await getPageText(docId, index)
-      if (cached) {
-        if (!stale) items = cached.items
-        return
-      }
-      const fresh = await adapter.getTextItems(index)
-      // Cache before the staleness check: the work is done either way, and the
-      // next visit to this page should not repeat it.
-      await putPageText({ docId, pageIndex: index, items: fresh, source: 'native' })
-      if (!stale) items = fresh
-    })().catch((err) => console.error(`page ${index} text extraction failed`, err))
+    pageText(adapter, docId, index)
+      .then((fresh) => {
+        if (!stale) items = fresh
+      })
+      .catch((err) => console.error(`page ${index} text extraction failed`, err))
 
     return () => {
       stale = true

@@ -86,18 +86,47 @@
   $effect(() => {
     if (!el || !magnifying) return
     const node = el
+    // Re-runs on zoom / page change so the cached box below cannot go stale.
+    void reader.zoom
+    void pageIndex
+
+    /**
+     * The page's box, cached. Measuring per pointermove would force a layout
+     * every frame — the single most expensive thing this path could do.
+     *
+     * `projection` divides out the leaf's 3D rotation and the focused leaf's
+     * scale, turning a viewport coordinate into the page's own layout space,
+     * which is what every quad on this page is expressed in.
+     */
+    let box: DOMRect | null = null
+    let projection = 1
+    const measure = () => {
+      box = node.getBoundingClientRect()
+      projection = box.width / (node.offsetWidth || 1)
+    }
+    const invalidate = () => (box = null)
 
     const move = (ev: PointerEvent) => {
-      const box = node.getBoundingClientRect()
-      magnifier?.track(ev.clientX - box.left, ev.clientY - box.top)
+      if (!box) measure()
+      magnifier?.track(
+        (ev.clientX - box!.left) / projection,
+        (ev.clientY - box!.top) / projection,
+      )
     }
     const leave = () => magnifier?.clear()
 
     node.addEventListener('pointermove', move, { passive: true })
     node.addEventListener('pointerleave', leave, { passive: true })
+    node.addEventListener('pointerenter', measure, { passive: true })
+    // The book scrolls when zoomed past the window, so a scroll moves the page.
+    addEventListener('scroll', invalidate, { passive: true, capture: true })
+    addEventListener('resize', invalidate, { passive: true })
     return () => {
       node.removeEventListener('pointermove', move)
       node.removeEventListener('pointerleave', leave)
+      node.removeEventListener('pointerenter', measure)
+      removeEventListener('scroll', invalidate, { capture: true })
+      removeEventListener('resize', invalidate)
     }
   })
 </script>
@@ -128,7 +157,7 @@
   {/if}
 
   {#if magnifying}
-    <Magnifier bind:this={magnifier} {pageIndex} {canvas} />
+    <Magnifier bind:this={magnifier} {pageIndex} {vp} />
   {/if}
 </div>
 

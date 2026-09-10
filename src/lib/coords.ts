@@ -9,7 +9,7 @@
  * drift when you zoom, change spread mode, or move to a different-DPI monitor.
  */
 
-import type { Quad } from './types.ts'
+import type { Quad, TextItem } from './types.ts'
 
 /**
  * The slice of pdf.js's PageViewport we depend on. Declared structurally so
@@ -127,4 +127,24 @@ export function mergeQuadsByLine(quads: Quad[], tolerance = 1.5): Quad[] {
     const top = Math.max(...line.map((q) => q.y + q.h))
     return { x: left, y: bottom, w: right - left, h: top - bottom }
   })
+}
+
+/**
+ * One box per visual line, in page units, ordered top-down. Drives the band
+ * magnifier, and later search-hit navigation.
+ *
+ * lineId is already authoritative — groupByLine assigned it during extraction —
+ * so a line's quads are collapsed with the tolerance wide open rather than
+ * having their baselines compared a second time.
+ */
+export function lineBoxes(items: TextItem[]): Quad[] {
+  const byLine = new Map<number, Quad[]>()
+  for (const item of items) {
+    const line = byLine.get(item.lineId)
+    if (line) line.push(item.quad)
+    else byLine.set(item.lineId, [item.quad])
+  }
+  return [...byLine.entries()]
+    .sort((a, b) => a[0] - b[0])
+    .map(([, quads]) => mergeQuadsByLine(quads, Infinity)[0])
 }

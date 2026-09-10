@@ -56,7 +56,14 @@ export class PdfAdapter implements DocAdapter {
 
   /** Promise-cached so concurrent layers share one getPage per index. */
   private pages = new Map<number, Promise<PDFPageProxy>>()
-  private renders = new Map<number, RenderTask>()
+  /**
+   * Keyed by canvas, not by page: the magnifier rasterises the SAME page into
+   * its own hi-res canvas, and two renders only conflict when they target one
+   * canvas. Keying by page index would have the magnifier cancel the visible
+   * page out from under itself.
+   */
+  private renders = new WeakMap<HTMLCanvasElement, RenderTask>()
+  private live = new Set<RenderTask>()
 
   // Field declared, not a parameter property: node --test strips types rather
   // than compiling them, and parameter properties emit code.
@@ -101,7 +108,7 @@ export class PdfAdapter implements DocAdapter {
 
     // Cancel first: setting canvas.width below wipes whatever is on it, and a
     // render still writing into a resized canvas paints garbage.
-    this.renders.get(pageIndex)?.cancel()
+    this.renders.get(canvas)?.cancel()
 
     const dpr = window.devicePixelRatio || 1
     const device = page.getViewport({ scale: scale * dpr })
@@ -113,14 +120,16 @@ export class PdfAdapter implements DocAdapter {
     canvas.style.height = `${css.height}px`
 
     const task = page.render({ canvas, viewport: device })
-    this.renders.set(pageIndex, task)
+    this.renders.set(canvas, task)
+    this.live.add(task)
     try {
       await task.promise
     } catch (err) {
       // The exception class comes from the dynamic import, so match on name.
       if ((err as Error)?.name !== 'RenderingCancelledException') throw err
     } finally {
-      if (this.renders.get(pageIndex) === task) this.renders.delete(pageIndex)
+      this.live.delete(task)
+      if (this.renders.get(canvas) === task) this.renders.delete(canvas)
     }
   }
 
@@ -151,8 +160,8 @@ export class PdfAdapter implements DocAdapter {
   }
 
   destroy(): void {
-    for (const task of this.renders.values()) task.cancel()
-    this.renders.clear()
+    for (const task of this.live) task.cancel()
+    this.live.clear()
     this.pages.clear()
     // The loading task owns the worker; destroying the proxy alone leaks it.
     void this.doc.loadingTask.destroy()

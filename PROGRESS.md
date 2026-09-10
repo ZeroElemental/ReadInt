@@ -2,7 +2,7 @@
 
 Working checklist. Update this as work lands — it's the handoff between sessions.
 
-**Status:** Phase 1 complete — the coordinate system is proven. Phase 2 next.
+**Status:** Phases 1-2 complete. Phase 3 (annotations + persistence) next.
 **Last updated:** 2026-09-10
 
 ---
@@ -62,17 +62,41 @@ window instead of letting it scroll.
 
 ---
 
-## Phase 2 — Magnifier
+## Phase 2 — Magnifier ✅
 
-- [ ] Off-DOM hi-res canvas for the focused page at `zoom × magFactor`
-- [ ] Lens mode — `srcRect` centred on cursor, round mask, rAF-throttled
-- [ ] Band mode — `srcRect` = hovered line's full-width box, drawn as a strip
-- [ ] Line detection from `TextLayer` `lineId`
-- [ ] Release the hi-res canvas on page change / focus change
-- [ ] Settings toggle + `m` cycles off → lens → band
+- [x] Off-DOM hi-res canvas for the focused page at `zoom × magFactor`
+- [x] Lens mode — `srcRect` centred on cursor, round mask, rAF-throttled
+- [x] Band mode — `srcRect` = hovered line's full-width box, drawn as a strip
+- [x] Line detection from `lineId` (`lineBoxes` in `coords.ts`)
+- [x] Release the hi-res canvas on page change / focus change
+- [x] Settings toggle + `m` cycles off → lens → band
 
-**Verify:** DevTools performance trace while sweeping the cursor — ≥55fps, and
-the heap does not grow across ten page turns.
+**Both modes are a 1:1 device-pixel blit.** The hi-res page is rasterised at
+exactly the magnification being shown, so `drawImage` never resamples. That is
+what makes the frame nearly free, and it is why one crop path serves both
+geometries instead of two.
+
+**`PdfAdapter` render cancellation is keyed by canvas, not by page index.** The
+magnifier rasterises the same page into its own canvas; keying by page had it
+cancelling the visible page out from under itself.
+
+**Verified:** sweeping 240 pointer moves across a page drew 240 frames at a p50
+of 0ms and a p95 of 0.1ms, against a 16.7ms budget — the draw path is not the
+bottleneck at any plausible rate. JS heap moved 12.6MB → 12.9MB across ten page
+turns with the magnifier live. Magnification measured exactly 2.5x (text row
+pitch 24.18px expected, 24-25px measured), the band tracks lines to the pixel
+(line 5 sits `5 × 16pt × zoom` below line 0) and hides itself between lines, `m`
+cycles correctly, and `f` moves the magnifier to the newly focused leaf with
+never more than one `.mag-surface` alive.
+
+Caveat on the memory number: `usedJSHeapSize` excludes canvas backing stores, so
+it is corroborating evidence, not proof. The real guarantee is structural —
+`PageView` mounts this component only for the focused page, and the effect
+teardown sizes the canvas to 0x0 rather than waiting for GC.
+
+Also fixed here: `PageView` was calling `getBoundingClientRect()` on every
+pointermove, forcing a layout per frame on the one path that must not. The box
+is now cached and invalidated on zoom, page change, scroll and resize.
 
 ---
 
