@@ -3,17 +3,70 @@
    * The book. Two leaves, a gutter, and a perspective so the spread curves.
    * Owns geometry and input; knows nothing about PDF vs EPUB.
    */
-  import { reader, focusedPage } from '../lib/reader.svelte.ts'
+  import {
+    reader,
+    focusedPage,
+    setZoom,
+    turnPage,
+    watchDevicePixelRatio,
+  } from '../lib/reader.svelte.ts'
   import { handleKey } from '../lib/keys.ts'
+  import { touchDocument } from '../lib/storage.ts'
   import PageView from './PageView.svelte'
   import Toolbar from './Toolbar.svelte'
   import SearchPanel from './SearchPanel.svelte'
   import DefinitionPopup from './DefinitionPopup.svelte'
 
+  const TURN_MS = 280
+  /** Matches the 2rem padding on .book, top and bottom. */
+  const BOOK_PADDING = 64
+
   let searchOpen = $state(false)
+  let turning = $state<'fwd' | 'back' | null>(null)
+  let book = $state<HTMLDivElement | null>(null)
 
   const rtl = $derived(reader.settings.readingDirection === 'rtl')
   const focused = $derived(focusedPage())
+
+  $effect(() => watchDevicePixelRatio())
+
+  /**
+   * Fit the spread to the window once per document. At scale 1 an A4 spread is
+   * ~1190px wide and would open scrolled off the screen.
+   */
+  $effect(() => {
+    const adapter = reader.adapter
+    if (!adapter) return
+    let stale = false
+    adapter.getViewport(0).then((v) => {
+      if (stale || v.height <= 0) return
+      const avail = (book?.clientHeight ?? window.innerHeight) - BOOK_PADDING
+      setZoom(avail / v.height)
+    })
+    return () => {
+      stale = true
+    }
+  })
+
+  // Where you stopped reading, remembered without a save.
+  $effect(() => {
+    const id = reader.docId
+    const page = reader.spreadStart
+    if (id) void touchDocument(id, { lastPageIndex: page })
+  })
+
+  /** Every turn goes through here so keyboard and toolbar animate alike. */
+  let timer: ReturnType<typeof setTimeout> | undefined
+  function turn(delta: number) {
+    const before = reader.spreadStart
+    turnPage(delta)
+    if (reader.spreadStart === before) return // already at an end
+    turning = delta > 0 ? 'fwd' : 'back'
+    clearTimeout(timer)
+    timer = setTimeout(() => (turning = null), TURN_MS)
+  }
+
+  $effect(() => () => clearTimeout(timer))
 
   function save() {
     // TODO(phase-3): saveAnnotations(docId, reader.annotations, reader.deletedIds)
@@ -24,15 +77,16 @@
   onkeydown={(e) =>
     handleKey(e, {
       save,
+      turn,
       search: () => (searchOpen = true),
       escape: () => (searchOpen = false),
     })}
 />
 
 <div class="reader" class:rtl>
-  <Toolbar onsave={save} onsearch={() => (searchOpen = !searchOpen)} />
+  <Toolbar onsave={save} onturn={turn} onsearch={() => (searchOpen = !searchOpen)} />
 
-  <div class="book" style:--zoom={reader.zoom}>
+  <div bind:this={book} class="book" data-turning={turning}>
     {#if reader.settings.spread}
       <PageView pageIndex={reader.spreadStart} side="left" focused={focused === reader.spreadStart} />
       <div class="gutter" aria-hidden="true"></div>
@@ -56,8 +110,12 @@
   }
   .book {
     display: flex;
-    align-items: center;
-    justify-content: center;
+    /* `safe` matters: a centred flex item that overflows its scroll container
+       cannot otherwise be scrolled back to its start edge, so zooming past the
+       window would put the top-left of the page permanently out of reach. */
+    align-items: safe center;
+    justify-content: safe center;
+    overflow: auto;
     gap: 0;
     /* The curve that makes a flat screen read as a bound book. */
     perspective: 2400px;
@@ -77,5 +135,33 @@
       rgba(0, 0, 0, 0.06) 45%,
       rgba(0, 0, 0, 0.22)
     );
+  }
+
+  /* The incoming leaf swings in on the gutter. Each keyframe set declares only
+     `from` on purpose: the implicit `to` is the leaf's own resting transform,
+     so a focused leaf lands on its scale and an unfocused one on its tilt,
+     with no snap at the end. The transform-origins are already the hinges. */
+  .book[data-turning='fwd'] :global(.page[data-side='left']) {
+    animation: leaf-in-fwd 0.28s ease-out;
+  }
+  .book[data-turning='back'] :global(.page[data-side='right']) {
+    animation: leaf-in-back 0.28s ease-out;
+  }
+  @keyframes leaf-in-fwd {
+    from {
+      transform: rotateY(76deg);
+      opacity: 0;
+    }
+  }
+  @keyframes leaf-in-back {
+    from {
+      transform: rotateY(-76deg);
+      opacity: 0;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .book[data-turning] :global(.page) {
+      animation: none;
+    }
   }
 </style>

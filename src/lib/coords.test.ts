@@ -7,7 +7,7 @@
 
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { quadToScreen, screenToQuad, mergeQuadsByLine } from './coords.ts'
+import { quadToScreen, screenToQuad, mergeQuadsByLine, groupByLine } from './coords.ts'
 import type { ViewportLike } from './coords.ts'
 
 /** Mimics pdf.js PageViewport: scales, and flips the y-axis. */
@@ -70,4 +70,24 @@ test('fragments on one line merge into a single marker stroke', () => {
 
 test('merging nothing yields nothing', () => {
   assert.deepEqual(mergeQuadsByLine([]), [])
+})
+
+test('lines are numbered top-down, fragments on one baseline share an id', () => {
+  //                       bottom line      top line, 2 fragments
+  const ids = groupByLine([
+    { x: 10, y: 480, w: 60, h: 12 },
+    { x: 51, y: 500.4, w: 30, h: 12 },
+    { x: 10, y: 500, w: 40, h: 12 },
+  ])
+
+  assert.deepEqual(ids, [1, 0, 0], 'ids must be parallel to the input order')
+})
+
+test('a baseline further off than the tolerance starts a new line', () => {
+  const ids = groupByLine([
+    { x: 10, y: 500, w: 40, h: 12 },
+    { x: 60, y: 498, w: 40, h: 12 },
+  ])
+
+  assert.deepEqual(ids, [0, 1])
 })

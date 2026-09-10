@@ -55,6 +55,12 @@ export const listDocuments = () =>
 
 export const getDocument = (id: string) => db.documents.get(id)
 
+export const putDocument = (record: DocumentRecord) => db.documents.put(record)
+
+/** Reopen / page-turn bookkeeping. Always freshens lastOpenedAt. */
+export const touchDocument = (id: string, patch: Partial<DocumentRecord> = {}) =>
+  db.documents.update(id, { ...patch, lastOpenedAt: Date.now() })
+
 export const annotationsForPage = (docId: string, pageIndex: number) =>
   db.annotations.where('[docId+pageIndex]').equals([docId, pageIndex]).toArray()
 

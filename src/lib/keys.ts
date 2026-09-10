@@ -2,7 +2,7 @@
  * Keyboard map. A plain object, not a hotkey library.
  */
 
-import { reader, setZoom, turnPage } from './reader.svelte.ts'
+import { reader, setZoom } from './reader.svelte.ts'
 import type { Tool } from './types.ts'
 
 const TOOL_KEYS: Record<string, Tool> = {
@@ -18,6 +18,8 @@ export interface KeyHandlers {
   save: () => void
   search: () => void
   escape: () => void
+  /** Not turnPage directly: the shell owns the turn so it can animate it. */
+  turn: (delta: number) => void
 }
 
 export function handleKey(ev: KeyboardEvent, on: KeyHandlers): void {
@@ -44,12 +46,12 @@ export function handleKey(ev: KeyboardEvent, on: KeyHandlers): void {
 
   switch (ev.key) {
     case 'ArrowLeft':
-      return turnPage(reader.settings.readingDirection === 'rtl' ? 1 : -1)
+      return on.turn(reader.settings.readingDirection === 'rtl' ? 1 : -1)
     case 'ArrowRight':
-      return turnPage(reader.settings.readingDirection === 'rtl' ? -1 : 1)
+      return on.turn(reader.settings.readingDirection === 'rtl' ? -1 : 1)
     case ' ':
       ev.preventDefault()
-      return turnPage(ev.shiftKey ? -1 : 1)
+      return on.turn(ev.shiftKey ? -1 : 1)
     case 'Escape':
       return on.escape()
     case '+':

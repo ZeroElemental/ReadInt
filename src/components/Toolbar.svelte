@@ -1,12 +1,14 @@
 <script lang="ts">
-  import { reader, setZoom, turnPage } from '../lib/reader.svelte.ts'
+  import { closeDoc, reader, setSpread, setZoom } from '../lib/reader.svelte.ts'
   import type { Tool } from '../lib/types.ts'
 
   interface Props {
     onsave: () => void
     onsearch: () => void
+    /** Owned by ReaderShell so keyboard and buttons animate the same turn. */
+    onturn: (delta: number) => void
   }
-  let { onsave, onsearch }: Props = $props()
+  let { onsave, onsearch, onturn }: Props = $props()
 
   const TOOLS: { id: Tool; label: string; key: string }[] = [
     { id: 'select', label: 'Select', key: 'S' },
@@ -19,7 +21,7 @@
 </script>
 
 <header class="toolbar">
-  <button onclick={() => (reader.docId = null)}>← Library</button>
+  <button onclick={closeDoc}>← Library</button>
 
   <div class="tools" role="toolbar" aria-label="Annotation tools">
     {#each TOOLS as t (t.id)}
@@ -35,13 +37,30 @@
 
   <div class="spacer"></div>
 
-  <button onclick={() => turnPage(-1)} aria-label="Previous page">‹</button>
+  <button onclick={() => onturn(-1)} aria-label="Previous page">‹</button>
   <span class="pages">{reader.spreadStart + 1} / {reader.pageCount || '—'}</span>
-  <button onclick={() => turnPage(1)} aria-label="Next page">›</button>
+  <button onclick={() => onturn(1)} aria-label="Next page">›</button>
 
   <button onclick={() => setZoom(reader.zoom / 1.25)} aria-label="Zoom out">−</button>
   <span class="zoom">{Math.round(reader.zoom * 100)}%</span>
   <button onclick={() => setZoom(reader.zoom * 1.25)} aria-label="Zoom in">+</button>
+
+  <button
+    class:active={reader.settings.spread}
+    onclick={() => setSpread(!reader.settings.spread)}
+    title="Two-page spread"
+  >
+    {reader.settings.spread ? 'Spread' : 'Single'}
+  </button>
+
+  <button
+    onclick={() =>
+      (reader.settings.readingDirection =
+        reader.settings.readingDirection === 'ltr' ? 'rtl' : 'ltr')}
+    title="Reading direction"
+  >
+    {reader.settings.readingDirection.toUpperCase()}
+  </button>
 
   <select bind:value={reader.settings.magnifier} aria-label="Magnifier mode">
     <option value="off">No magnifier</option>

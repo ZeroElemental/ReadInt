@@ -1,26 +1,72 @@
 <script lang="ts">
   import { onMount } from 'svelte'
-  import { listDocuments } from '../lib/storage.ts'
-  import { detectFormat } from '../adapters/index.ts'
+  import {
+    getDocument,
+    listDocuments,
+    putDocument,
+    touchDocument,
+  } from '../lib/storage.ts'
+  import { detectFormat, openDocument } from '../adapters/index.ts'
+  import { openDoc } from '../lib/reader.svelte.ts'
   import type { DocumentRecord } from '../lib/types.ts'
 
   let docs = $state<DocumentRecord[]>([])
   let dragging = $state(false)
   let error = $state('')
+  let busy = $state(false)
 
   onMount(async () => {
     docs = await listDocuments()
   })
 
   async function accept(files: FileList | null) {
-    if (!files?.length) return
+    if (!files?.length || busy) return
+    const file = files[0]
     error = ''
+    busy = true
     try {
-      detectFormat(files[0])
-      // TODO(phase-1): persist the blob, open the adapter, set reader.docId.
-      error = 'Import lands in Phase 1.'
+      const now = Date.now()
+      const rec: DocumentRecord = {
+        id: crypto.randomUUID(),
+        name: file.name,
+        format: detectFormat(file),
+        blob: file,
+        pageCount: 0, // real count only exists once the adapter is open
+        ocrDone: false,
+        addedAt: now,
+        lastOpenedAt: now,
+        lastPageIndex: 0,
+      }
+      await putDocument(rec)
+      await open(rec)
     } catch (e) {
       error = (e as Error).message
+    } finally {
+      busy = false
+    }
+  }
+
+  /** The one open path: the drop handler and the shelf both land here. */
+  async function open(rec: DocumentRecord) {
+    // If this throws, reader state is never touched — a corrupt file leaves the
+    // library on screen with an error rather than a half-open reader.
+    const adapter = await openDocument(rec.blob, rec.format)
+    openDoc(rec, adapter)
+    await touchDocument(rec.id, { pageCount: adapter.pageCount })
+  }
+
+  async function reopen(id: string) {
+    if (busy) return
+    error = ''
+    busy = true
+    try {
+      const rec = await getDocument(id)
+      if (!rec) throw new Error('That document is no longer stored on this device.')
+      await open(rec)
+    } catch (e) {
+      error = (e as Error).message
+    } finally {
+      busy = false
     }
   }
 </script>
@@ -60,7 +106,7 @@
   {#if docs.length}
     <ul class="shelf">
       {#each docs as doc (doc.id)}
-        <li><button>{doc.name}</button></li>
+        <li><button onclick={() => reopen(doc.id)}>{doc.name}</button></li>
       {/each}
     </ul>
   {/if}

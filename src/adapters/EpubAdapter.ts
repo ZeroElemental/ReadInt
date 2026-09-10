@@ -11,7 +11,7 @@
  * STATUS: skeleton — Phase 6.
  */
 
-import type { DocAdapter } from './types.ts'
+import type { DocAdapter, PageGeometry } from './types.ts'
 import type { TextItem } from '../lib/types.ts'
 
 export class EpubAdapter implements DocAdapter {
@@ -24,9 +24,10 @@ export class EpubAdapter implements DocAdapter {
     throw new Error('EpubAdapter.open not implemented')
   }
 
-  getPageSize(_pageIndex: number): { w: number; h: number } {
-    // Reflowable: this is the viewport size, not an intrinsic page size.
-    throw new Error('EpubAdapter.getPageSize not implemented')
+  async getViewport(_pageIndex: number): Promise<PageGeometry> {
+    // TODO(phase-6): reflowable text has no intrinsic page geometry — this is
+    // the rendered viewport's size, and annotations here are CFIs instead.
+    throw new Error('EpubAdapter.getViewport not implemented')
   }
 
   async renderPage(): Promise<void> {

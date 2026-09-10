@@ -2,8 +2,8 @@
 
 Working checklist. Update this as work lands — it's the handoff between sessions.
 
-**Status:** skeleton complete, Phase 1 not started.
-**Last updated:** 2026-09-07
+**Status:** Phase 1 complete — the coordinate system is proven. Phase 2 next.
+**Last updated:** 2026-09-10
 
 ---
 
@@ -18,34 +18,47 @@ Working checklist. Update this as work lands — it's the handoff between sessio
 - [x] `lib/keys.ts` — keyboard map
 - [x] `adapters/` — `DocAdapter` interface + 3 stubs + format detection
 - [x] `components/` — all 9 components stubbed, shell renders
-- [x] `CLAUDE.md` — invariants documented
+- [x] `AGENTS.md` — invariants documented
 
 Verified: `npm run build` clean (no warnings), `npm run check` 0 errors /
 0 warnings across 277 files, `npm test` 5/5 passing.
 
 ---
 
-## Phase 1 — Shell + PDF render
+## Phase 1 — Shell + PDF render ✅
 
-Proves the coordinate system before anything is built on it. **Do not start
-Phase 2 until the drift check below passes.**
+Proves the coordinate system before anything is built on it.
 
-- [ ] `Library.svelte`: persist the dropped file to Dexie, open the adapter
-- [ ] `PdfAdapter.open` — `getDocument`, hold the `PDFDocumentProxy`
-- [ ] `PdfAdapter.getPageSize` — viewport at scale 1
-- [ ] `PdfAdapter.renderPage` — render at `zoom × devicePixelRatio`, CSS-size
+- [x] `Library.svelte`: persist the dropped file to Dexie, open the adapter
+- [x] `PdfAdapter.open` — `getDocument`, hold the `PDFDocumentProxy`
+- [x] `PdfAdapter.getViewport` — viewport at scale 1
+- [x] `PdfAdapter.renderPage` — render at `zoom × devicePixelRatio`, CSS-size
       the canvas back down; cancel any in-flight render for that page first
-- [ ] `PdfAdapter.getTextItems` — `getTextContent()` → quads + `lineId`
-- [ ] `TextLayer.svelte` — position/scale each span onto its quad
-- [ ] Spread geometry, focus side, LTR/RTL, page-turn animation
-- [ ] Wire `reader.pageCount`, `lastPageIndex` restore
-- [ ] Configure chunk splitting in `vite.config.ts` once pdf.js is actually
-      imported (rolldown's `codeSplitting`, not the deprecated `advancedChunks`)
+- [x] `PdfAdapter.getTextItems` — `getTextContent()` → quads + `lineId`
+- [x] `TextLayer.svelte` — position/scale each span onto its quad
+- [x] Spread geometry, focus side, LTR/RTL, page-turn animation
+- [x] Wire `reader.pageCount`, `lastPageIndex` restore
+- [x] Chunk splitting — pdf.js is reached only through `await import()`, so
+      rolldown splits it out on its own. No config entry was needed.
 
-**Verify:** draw a debug rect at fixed page coordinates. It must stay pinned to
-the same glyphs across 50%→300% zoom, spread→single, LTR→RTL, window resize,
-and a browser-zoom (DPR) change. If it drifts, fix the transform — do not build
-on it.
+**Interface change:** `DocAdapter.getPageSize` is gone, replaced by
+`getViewport(pageIndex): Promise<PageGeometry>`. `getPage` is async, and every
+layer above the canvas needs the full transform (rotation and the y-flip), not
+just a width and height. pdf.js's `PageViewport` satisfies `PageGeometry` as-is.
+
+**Verified** with a 4-page PDF that draws a box at exactly the debug quad's
+coordinates, so the rect has a rasterised target to be compared against. With
+the zoom divided out, the rect measured `x=72 y=218 w=200 h=24` — the exact page
+quad — at every one of: 48%/60%/75%/93%/117%/146%/183%/228% zoom, spread↔single,
+LTR↔RTL, window resize, and a live DPR change (1.5→1.0, canvas backing store
+followed). Selection over the anchor run returns `"ANCHOR AT 72,600"`, all 16
+runs extract with line ids 0–15 in reading order, and reopening from the shelf
+restores the page you left on.
+
+Two things the check surfaced and fixed: the text layer measured spans that
+still carried their previous `scaleX` (harmless today, a compounding error the
+moment those nodes are reused), and `.book` clipped anything zoomed past the
+window instead of letting it scroll.
 
 ---
 

@@ -83,6 +83,32 @@ export function relativeTo(rect: DOMRect, pageEl: DOMRect): ScreenRect {
 }
 
 /**
+ * Assign a line number to each quad, in reading order — top line is 0.
+ *
+ * Both the text layer (TextItem.lineId, which the band magnifier reads) and
+ * highlight merging need the same notion of "these are on one line", so it
+ * lives here once. Returned ids are parallel to the input array.
+ */
+export function groupByLine(quads: Quad[], tolerance = 1.5): number[] {
+  // Top-to-bottom, then left-to-right: the order lines get numbered in.
+  const order = quads
+    .map((_, i) => i)
+    .sort((a, b) => quads[b].y - quads[a].y || quads[a].x - quads[b].x)
+
+  const ids = new Array<number>(quads.length)
+  /** Baseline y of each line found so far, indexed by line id. */
+  const baselines: number[] = []
+
+  for (const i of order) {
+    const q = quads[i]
+    let line = baselines.findIndex((y) => Math.abs(y - q.y) <= tolerance)
+    if (line === -1) line = baselines.push(q.y) - 1
+    ids[i] = line
+  }
+  return ids
+}
+
+/**
  * Text selections produce one rect per line fragment, often several per line
  * with sub-pixel gaps. Merging them keeps a highlight looking like one stroke
  * of a marker rather than a row of tiles.
@@ -90,12 +116,9 @@ export function relativeTo(rect: DOMRect, pageEl: DOMRect): ScreenRect {
 export function mergeQuadsByLine(quads: Quad[], tolerance = 1.5): Quad[] {
   if (quads.length === 0) return []
 
+  const ids = groupByLine(quads, tolerance)
   const lines: Quad[][] = []
-  for (const q of [...quads].sort((a, b) => b.y - a.y || a.x - b.x)) {
-    const line = lines.find((l) => Math.abs(l[0].y - q.y) <= tolerance)
-    if (line) line.push(q)
-    else lines.push([q])
-  }
+  ids.forEach((id, i) => ((lines[id] ??= []).push(quads[i])))
 
   return lines.map((line) => {
     const left = Math.min(...line.map((q) => q.x))

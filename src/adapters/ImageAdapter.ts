@@ -5,7 +5,7 @@
  * STATUS: skeleton — Phase 5.
  */
 
-import type { DocAdapter } from './types.ts'
+import type { DocAdapter, PageGeometry } from './types.ts'
 import type { TextItem } from '../lib/types.ts'
 
 export class ImageAdapter implements DocAdapter {
@@ -18,8 +18,9 @@ export class ImageAdapter implements DocAdapter {
     throw new Error('ImageAdapter.open not implemented')
   }
 
-  getPageSize(_pageIndex: number): { w: number; h: number } {
-    throw new Error('ImageAdapter.getPageSize not implemented')
+  async getViewport(_pageIndex: number): Promise<PageGeometry> {
+    // TODO(phase-5): page units = the image's natural pixel size, y-up.
+    throw new Error('ImageAdapter.getViewport not implemented')
   }
 
   async renderPage(

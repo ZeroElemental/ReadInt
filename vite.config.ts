@@ -6,7 +6,6 @@ export default defineConfig({
   // pdf.js and tesseract both ship their own workers; keep them ESM.
   worker: { format: 'es' },
   build: { target: 'es2022' },
-  // Chunk splitting for pdf.js / tesseract is deliberately not configured yet —
-  // neither is imported, so there is nothing to split. Add it in Phase 1 when
-  // there's a real bundle to measure.
+  // No manual chunk config: pdf.js (and later tesseract) are reached only
+  // through dynamic import, so rolldown splits them out on its own.
 })

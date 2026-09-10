@@ -12,8 +12,15 @@
    * Layer 4 sits above 2 and 3 because selection has to be on top. The conflict
    * with drawing is resolved by TOOL, not z-index: pointer-events is switched
    * so exactly one layer is live at a time.
+   *
+   * Geometry contract for every layer above the canvas: positions are computed
+   * ONCE in scale-1 CSS px from the page's viewport, and `--z` on this element
+   * scales them. A zoom change is then one custom-property write, not a relayout
+   * of every span.
    */
   import { reader } from '../lib/reader.svelte.ts'
+  import { quadToScreen } from '../lib/coords.ts'
+  import type { PageGeometry } from '../adapters/types.ts'
   import AnnotationLayer from './AnnotationLayer.svelte'
   import TextLayer from './TextLayer.svelte'
   import Magnifier from './Magnifier.svelte'
@@ -28,15 +35,50 @@
   let el = $state<HTMLDivElement | null>(null)
   let canvas = $state<HTMLCanvasElement | null>(null)
   let magnifier = $state<ReturnType<typeof Magnifier> | null>(null)
+  let vp = $state<PageGeometry | null>(null)
 
-  const inRange = $derived(pageIndex >= 0 && pageIndex < Math.max(1, reader.pageCount))
+  const inRange = $derived(pageIndex >= 0 && pageIndex < reader.pageCount)
   const selecting = $derived(reader.tool === 'select')
   const magnifying = $derived(focused && reader.settings.magnifier !== 'off')
 
+  /**
+   * The phase-1 verification instrument: a rect at fixed page coordinates that
+   * must stay on the same glyphs through every zoom, spread and DPI change.
+   * Dev-only, and off unless you ask for it.
+   */
+  const DEBUG_QUAD = { x: 72, y: 600, w: 200, h: 24 }
+  const debug =
+    import.meta.env.DEV &&
+    typeof location !== 'undefined' &&
+    new URLSearchParams(location.search).has('debug')
+  const debugRect = $derived(vp && debug ? quadToScreen(DEBUG_QUAD, vp) : null)
+
   $effect(() => {
-    if (!canvas || !reader.adapter || !inRange) return
-    // TODO(phase-1): renderPage(pageIndex, canvas, zoom * devicePixelRatio),
-    // cancelling any in-flight render for this page first.
+    const adapter = reader.adapter
+    if (!adapter || !inRange) {
+      vp = null
+      return
+    }
+    let stale = false
+    adapter.getViewport(pageIndex).then((v) => {
+      if (!stale) vp = v
+    })
+    return () => {
+      stale = true
+    }
+  })
+
+  // Re-rasterise on zoom AND on devicePixelRatio change — an upscaled canvas at
+  // a new DPI is the difference between crisp and soft type.
+  $effect(() => {
+    const adapter = reader.adapter
+    const target = canvas
+    void reader.zoom
+    void reader.dpr
+    if (!adapter || !target || !vp) return
+    adapter.renderPage(pageIndex, target, reader.zoom).catch((err) => {
+      console.error(`page ${pageIndex} failed to render`, err)
+    })
   })
 
   // Listener attached imperatively, not declaratively: this is a 60fps path, so
@@ -60,11 +102,30 @@
   })
 </script>
 
-<div bind:this={el} class="page" class:focused data-side={side} hidden={!inRange}>
+<div
+  bind:this={el}
+  class="page"
+  class:focused
+  data-side={side}
+  hidden={!inRange}
+  style:--z={reader.zoom}
+  style:--pw={vp?.width ?? 0}
+  style:--ph={vp?.height ?? 0}
+>
   <canvas bind:this={canvas}></canvas>
 
   <AnnotationLayer {pageIndex} interactive={!selecting} />
-  <TextLayer {pageIndex} interactive={selecting} />
+  <TextLayer {pageIndex} {vp} interactive={selecting} />
+
+  {#if debugRect}
+    <div
+      class="debug-quad"
+      style:left="calc({debugRect.left} * var(--z) * 1px)"
+      style:top="calc({debugRect.top} * var(--z) * 1px)"
+      style:width="calc({debugRect.width} * var(--z) * 1px)"
+      style:height="calc({debugRect.height} * var(--z) * 1px)"
+    ></div>
+  {/if}
 
   {#if magnifying}
     <Magnifier bind:this={magnifier} {pageIndex} {canvas} />
@@ -74,6 +135,10 @@
 <style>
   .page {
     position: relative;
+    /* Sized from the page's own geometry, so the leaf never flashes at the
+       wrong aspect while the canvas is still rasterising. */
+    width: calc(var(--pw) * var(--z) * 1px);
+    height: calc(var(--ph) * var(--z) * 1px);
     background: var(--paper);
     box-shadow: 0 12px 34px rgba(0, 0, 0, 0.24);
     transform-style: preserve-3d;
@@ -98,8 +163,13 @@
   }
   canvas {
     display: block;
-    /* Canvas is rendered at dpr x zoom, then CSS-sized back down. */
-    width: 100%;
-    height: 100%;
+    /* Rendered at dpr x zoom; the adapter CSS-sizes it back down. */
+  }
+  .debug-quad {
+    position: absolute;
+    z-index: 7;
+    pointer-events: none;
+    outline: 1px solid #e0245e;
+    background: rgba(224, 36, 94, 0.14);
   }
 </style>

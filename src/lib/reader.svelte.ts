@@ -8,7 +8,7 @@
  * mistake that makes this app feel slow.
  */
 
-import type { Annotation, Settings, Tool } from './types.ts'
+import type { Annotation, DocumentRecord, Settings, Tool } from './types.ts'
 import { DEFAULT_SETTINGS } from './storage.ts'
 import type { DocAdapter } from '../adapters/types.ts'
 
@@ -26,6 +26,13 @@ export const reader = $state({
 
   zoom: 1,
   tool: 'select' as Tool,
+
+  /**
+   * Device pixel ratio. Not 60fps state — it changes only on a browser-zoom or
+   * monitor change, and the canvas must re-rasterise when it does or the page
+   * turns soft.
+   */
+  dpr: typeof window === 'undefined' ? 1 : window.devicePixelRatio || 1,
 
   /** Live annotations for the open document. Flushed to Dexie on save. */
   annotations: [] as Annotation[],
@@ -60,10 +67,69 @@ export function focusedPage(): number {
   return reader.spreadStart + (onRight !== rightFirst ? 1 : 0)
 }
 
+/**
+ * In spread mode the left leaf is always even, so a spread never straddles two
+ * different pairs. Aligning AFTER the range clamp matters: clamping first can
+ * land on an odd last page.
+ */
+function clampSpreadStart(n: number): number {
+  const bounded = Math.max(0, Math.min(n, Math.max(0, reader.pageCount - 1)))
+  return reader.settings.spread ? bounded - (bounded % 2) : bounded
+}
+
+/** Toggling spread re-aligns the left leaf, which single-page mode may have left odd. */
+export function setSpread(on: boolean) {
+  reader.settings.spread = on
+  reader.spreadStart = clampSpreadStart(reader.spreadStart)
+}
+
 export function turnPage(delta: number) {
   const step = reader.settings.spread ? 2 : 1
-  const next = reader.spreadStart + delta * step
-  reader.spreadStart = Math.max(0, Math.min(next, Math.max(0, reader.pageCount - 1)))
+  reader.spreadStart = clampSpreadStart(reader.spreadStart + delta * step)
+}
+
+/** Enter the reader. The adapter is already open; this just adopts it. */
+export function openDoc(rec: DocumentRecord, adapter: DocAdapter) {
+  reader.adapter = adapter
+  reader.pageCount = adapter.pageCount
+  reader.docId = rec.id
+  reader.docName = rec.name
+  reader.annotations = []
+  reader.deletedIds = []
+  reader.dirty = false
+  reader.focusSide = 'left'
+  reader.spreadStart = clampSpreadStart(rec.lastPageIndex)
+}
+
+/**
+ * Back to the library. Destroying the adapter is the point — a PDFDocumentProxy
+ * holds a worker and every rendered page it has cached.
+ */
+export function closeDoc() {
+  reader.adapter?.destroy()
+  reader.adapter = null
+  reader.docId = null
+  reader.docName = ''
+  reader.pageCount = 0
+  reader.spreadStart = 0
+  reader.annotations = []
+  reader.deletedIds = []
+  reader.dirty = false
+}
+
+/** Fires on browser zoom / monitor change. Returns its own teardown. */
+export function watchDevicePixelRatio(): () => void {
+  let media: MediaQueryList | null = null
+  const sync = () => {
+    reader.dpr = window.devicePixelRatio || 1
+    media?.removeEventListener('change', sync)
+    // The query only matches the CURRENT ratio, so it has to be re-armed each
+    // time — this is the standard way to observe devicePixelRatio.
+    media = window.matchMedia(`(resolution: ${reader.dpr}dppx)`)
+    media.addEventListener('change', sync)
+  }
+  sync()
+  return () => media?.removeEventListener('change', sync)
 }
 
 export function setZoom(z: number) {
