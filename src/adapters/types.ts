@@ -19,6 +19,13 @@ import type { ViewportLike } from '../lib/coords.ts'
 export interface PageGeometry extends ViewportLike {
   width: number
   height: number
+  /**
+   * page units -> scale-1 CSS px as a raw [a,b,c,d,e,f] matrix. Rects go
+   * through quadToScreen; ink is a path of hundreds of points, so it is drawn
+   * by handing this straight to an SVG transform. Same transform, exactly —
+   * including rotation and the y-flip — just applied by the renderer.
+   */
+  transform: number[]
 }
 
 export interface DocAdapter {

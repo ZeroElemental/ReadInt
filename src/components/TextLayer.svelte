@@ -15,8 +15,8 @@
    * thousand inline styles, and font-size grows with zoom so the browser's
    * minimum-font-size clamp never distorts a run.
    */
-  import { reader } from '../lib/reader.svelte.ts'
-  import { quadToScreen } from '../lib/coords.ts'
+  import { reader, addAnnotation, newAnnotation } from '../lib/reader.svelte.ts'
+  import { mergeQuadsByLine, quadToScreen, relativeTo, screenToQuad } from '../lib/coords.ts'
   import { pageText } from '../adapters/index.ts'
   import type { PageGeometry } from '../adapters/types.ts'
   import type { TextItem } from '../lib/types.ts'
@@ -29,6 +29,46 @@
     interactive: boolean
   }
   let { pageIndex, vp, interactive }: Props = $props()
+
+  /**
+   * Turn the live selection into a highlight or underline.
+   *
+   * The browser's own selection is the hit-testing: one rect per line fragment,
+   * which mergeQuadsByLine collapses into one stroke of a marker per line. The
+   * rects come back in viewport space with the leaf's 3D transform baked in, so
+   * they are divided by zoom AND by the layer's projected/layout ratio to land
+   * back in the scale-1 space every quad is expressed in.
+   */
+  function commitSelection() {
+    const type = reader.tool
+    if ((type !== 'highlight' && type !== 'underline') || !vp || !layer) return
+
+    const sel = getSelection()
+    if (!sel || sel.isCollapsed || sel.rangeCount === 0) return
+
+    const range = sel.getRangeAt(0)
+    if (!layer.contains(range.commonAncestorContainer)) return
+
+    const host = layer.getBoundingClientRect()
+    const scale = (host.width / (layer.offsetWidth || 1)) * reader.zoom
+    const quads = mergeQuadsByLine(
+      [...range.getClientRects()]
+        .filter((r) => r.width > 0 && r.height > 0)
+        .map((r) => screenToQuad(relativeTo(r, host, scale), vp!)),
+    )
+    if (quads.length === 0) return
+
+    addAnnotation(
+      newAnnotation(type, pageIndex, {
+        quads,
+        color: type === 'highlight' ? reader.settings.highlightColor : reader.settings.inkColor,
+        thickness: reader.settings.thickness,
+      }),
+    )
+    // Clearing is the feedback: the mark appears, the blue selection does not
+    // linger on top of it.
+    sel.removeAllRanges()
+  }
 
   let layer = $state<HTMLDivElement | null>(null)
   let items = $state<TextItem[]>([])
@@ -93,6 +133,10 @@
     })
   })
 </script>
+
+<!-- pointerup, not selectionchange: the selection is only final once the
+     gesture ends, and a keyboard selection ends with a key, not a drag. -->
+<svelte:document onpointerup={commitSelection} />
 
 <div bind:this={layer} class="text-layer" class:interactive>
   {#each placed as { item, box }, i (i)}

@@ -39,6 +39,12 @@ export const reader = $state({
   deletedIds: [] as string[],
   dirty: false,
 
+  /**
+   * A recovered autosave, waiting on the user. Never merged on its own — the
+   * whole point of an explicit save is that nothing appears without asking.
+   */
+  draft: null as { annotations: Annotation[]; savedAt: number } | null,
+
   settings: { ...DEFAULT_SETTINGS } as Settings,
 })
 
@@ -89,16 +95,74 @@ export function turnPage(delta: number) {
 }
 
 /** Enter the reader. The adapter is already open; this just adopts it. */
-export function openDoc(rec: DocumentRecord, adapter: DocAdapter) {
+export function openDoc(
+  rec: DocumentRecord,
+  adapter: DocAdapter,
+  annotations: Annotation[] = [],
+  draft: { annotations: Annotation[]; savedAt: number } | null = null,
+) {
   reader.adapter = adapter
   reader.pageCount = adapter.pageCount
   reader.docId = rec.id
   reader.docName = rec.name
-  reader.annotations = []
+  reader.annotations = annotations
   reader.deletedIds = []
   reader.dirty = false
+  reader.draft = draft
   reader.focusSide = 'left'
   reader.spreadStart = clampSpreadStart(rec.lastPageIndex)
+}
+
+/**
+ * A plain deep copy of the live annotations.
+ *
+ * Load-bearing: Svelte 5 state is a DEEP proxy, so a spread copy still hands
+ * Dexie a Proxy for `quads`/`box`, structuredClone refuses it, and the write
+ * fails. Everything leaving for storage goes through here.
+ */
+export function annotationsSnapshot(): Annotation[] {
+  return $state.snapshot(reader.annotations) as Annotation[]
+}
+
+/** Saved for real. The draft that shadowed it is now noise. */
+export function markSaved() {
+  reader.deletedIds = []
+  reader.dirty = false
+  reader.draft = null
+}
+
+/** Take the recovered autosave, replacing what was loaded from the last save. */
+export function acceptDraft() {
+  if (!reader.draft) return
+  reader.annotations = reader.draft.annotations
+  reader.draft = null
+  reader.dirty = true
+}
+
+export function updateAnnotation(id: string, patch: Partial<Annotation>) {
+  const a = reader.annotations.find((x) => x.id === id)
+  if (!a) return
+  Object.assign(a, patch, { updatedAt: Date.now() })
+  markDirty()
+}
+
+/** Every annotation is born here, so id/timestamps can never be forgotten. */
+export function newAnnotation(
+  type: Annotation['type'],
+  pageIndex: number,
+  fields: Partial<Annotation> = {},
+): Annotation {
+  const now = Date.now()
+  return {
+    id: crypto.randomUUID(),
+    docId: reader.docId ?? '',
+    pageIndex,
+    type,
+    color: reader.settings.inkColor,
+    createdAt: now,
+    updatedAt: now,
+    ...fields,
+  }
 }
 
 /**
@@ -115,6 +179,27 @@ export function closeDoc() {
   reader.annotations = []
   reader.deletedIds = []
   reader.dirty = false
+  reader.draft = null
+}
+
+/**
+ * Which layer takes the pointer, keyed on the tool. Exactly one is ever true —
+ * that is invariant 4, and it is resolved here rather than by z-index.
+ *
+ * Highlight and underline count as text tools: the browser's own selection is
+ * what produces their geometry, so the text layer has to stay live for them.
+ */
+export function activeLayer(): 'text' | 'ink' | 'note' | 'erase' {
+  switch (reader.tool) {
+    case 'pen':
+      return 'ink'
+    case 'note':
+      return 'note'
+    case 'erase':
+      return 'erase'
+    default:
+      return 'text'
+  }
 }
 
 /** Fires on browser zoom / monitor change. Returns its own teardown. */

@@ -2,7 +2,7 @@
 
 Working checklist. Update this as work lands — it's the handoff between sessions.
 
-**Status:** Phases 1-2 complete. Phase 3 (annotations + persistence) next.
+**Status:** Phases 1-3 complete. Phase 4 (definitions, search, deploy) next.
 **Last updated:** 2026-09-10
 
 ---
@@ -100,19 +100,63 @@ is now cached and invalidated on zoom, page change, scroll and resize.
 
 ---
 
-## Phase 3 — Annotations + persistence
+## Phase 3 — Annotations + persistence ✅
 
-- [ ] Highlight/underline from `getClientRects()` → `mergeQuadsByLine` → quads
-- [ ] Ink via perfect-freehand + `PointerEvent.pressure` → SVG path in page units
-- [ ] Notes — placed, resizable, contenteditable
-- [ ] Erase tool
-- [ ] Colour + thickness palette in the toolbar
-- [ ] Explicit save (`Ctrl+S`), dirty indicator, `beforeunload` guard
-- [ ] 30s draft autosave + recovery prompt on reopen
+- [x] Highlight/underline from `getClientRects()` → `mergeQuadsByLine` → quads
+- [x] Ink via perfect-freehand + `PointerEvent.pressure` → SVG path in page units
+- [x] Notes — placed, resizable, contenteditable
+- [x] Erase tool
+- [x] Colour + thickness palette in the toolbar
+- [x] Explicit save (`Ctrl+S`), dirty indicator, `beforeunload` guard
+- [x] 30s draft autosave + recovery prompt on reopen
 
-**Verify:** annotate, save, hard-reload, reopen — everything returns in place.
-Repeat at a different zoom to confirm page-unit storage. Close while dirty and
-confirm the prompt fires.
+**Layers are routed by tool in markup, not by z-index.** The drawn layers are
+inert and `aria-hidden`; the surface that takes a pointer only exists while its
+tool is active (`activeLayer()` in the store). Highlight and underline count as
+text tools — the browser's own selection is what produces their geometry.
+Erase is therefore one uniform layer of buttons over each mark's bounds rather
+than click handlers on three different shapes, which also solves a thin ink
+stroke being nearly impossible to click.
+
+**Ink stays in page units end to end.** A stroke is hundreds of points, so
+instead of converting each one on every render the SVG is handed the viewport's
+own matrix (`PageGeometry.transform`) and the path is left alone.
+
+**Verified:** all four types created, saved with `Ctrl+S`, hard-reloaded and
+reopened — every mark returned with byte-identical geometry. Measured at 0.64x,
+1.0x and 1.95x zoom the marks read `x=72.2 y=216.17 w=221.38` at every one, and
+a note holds exactly 150x90 page units. The 30s autosave wrote a draft of 4
+while the saved table stayed at 5, untouched; reopening showed the saved 5 plus
+a banner offering the draft, and Restore swapped in the 4 and went dirty.
+Closing while dirty fired the `beforeunload` prompt.
+
+### Four bugs this phase surfaced, all fixed
+
+1. **Saving silently failed.** Svelte 5 state is a DEEP proxy, so `{...a}` still
+   handed Dexie a Proxy for `quads`, `structuredClone` refused it, and every
+   save threw. Everything bound for storage now goes through
+   `annotationsSnapshot()` (`$state.snapshot`). The error path deliberately
+   leaves `dirty` set, which is how this was caught rather than lost.
+2. **Highlights were opaque blocks**, hiding the text they marked — the thing
+   the layer's own comment promised they would not do. `mix-blend-mode` was on
+   each rect, but `.highlights` has `z-index`, which makes it a stacking
+   context, so a rect could only blend with its transparent parent. The blend
+   belongs on the layer. `transform-style: preserve-3d` on `.page` was a second
+   isolator and is now `flat` — the leaf's rotation comes from `.book`'s
+   perspective and never needed it.
+3. **Ink recorded a single point.** `getCoalescedEvents()` can return an EMPTY
+   list, and `?? [ev]` only covers a missing method, so every stroke collapsed
+   to a dot.
+4. **A fresh document opened dirty, and notes shrank to nothing.** The resize
+   observer ran while `vp` was still null, measured the 0x0 placeholder the note
+   had collapsed into, and stored THAT as the user's size. Annotations no longer
+   render before there is a viewport, and the observer compares against what was
+   rendered (`box x zoom`, via computed style) rather than a size round-tripped
+   back through the leaf's 3D projection.
+
+**Known limitation:** two tabs open on the same document share one `drafts` row
+and will overwrite each other's autosave. Out of scope while the app is
+single-device; worth a tab lock or a per-tab draft id when sync arrives.
 
 ---
 

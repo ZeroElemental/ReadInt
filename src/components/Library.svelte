@@ -1,7 +1,9 @@
 <script lang="ts">
   import { onMount } from 'svelte'
   import {
+    annotationsForDoc,
     getDocument,
+    getDraft,
     listDocuments,
     putDocument,
     touchDocument,
@@ -51,7 +53,13 @@
     // If this throws, reader state is never touched — a corrupt file leaves the
     // library on screen with an error rather than a half-open reader.
     const adapter = await openDocument(rec.blob, rec.format)
-    openDoc(rec, adapter)
+    // The saved marks, plus any autosave that outlived a crash. The draft is
+    // carried, never merged — the user is asked.
+    const [saved, draft] = await Promise.all([
+      annotationsForDoc(rec.id),
+      getDraft(rec.id),
+    ])
+    openDoc(rec, adapter, saved, draft ?? null)
     await touchDocument(rec.id, { pageCount: adapter.pageCount })
   }
 

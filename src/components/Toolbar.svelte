@@ -35,6 +35,18 @@
     {/each}
   </div>
 
+  <label class="swatch" title="Highlight colour">
+    <input type="color" bind:value={reader.settings.highlightColor} />
+    <span aria-hidden="true" style:background={reader.settings.highlightColor}></span>
+  </label>
+  <label class="swatch" title="Ink colour">
+    <input type="color" bind:value={reader.settings.inkColor} />
+    <span aria-hidden="true" style:background={reader.settings.inkColor}></span>
+  </label>
+  <label class="thickness" title="Stroke thickness">
+    <input type="range" min="0.5" max="8" step="0.5" bind:value={reader.settings.thickness} />
+  </label>
+
   <div class="spacer"></div>
 
   <button onclick={() => onturn(-1)} aria-label="Previous page">‹</button>
@@ -116,6 +128,34 @@
     min-width: 3.5rem;
     text-align: center;
     font-variant-numeric: tabular-nums;
+  }
+  /* The native colour input is the picker; the span is what you actually see. */
+  .swatch {
+    position: relative;
+    width: 1.4rem;
+    height: 1.4rem;
+    cursor: pointer;
+  }
+  .swatch input {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    cursor: pointer;
+  }
+  .swatch span {
+    display: block;
+    width: 100%;
+    height: 100%;
+    border: 1px solid var(--rule);
+    border-radius: 4px;
+  }
+  .swatch:focus-within span {
+    outline: 2px solid #3b6ea5;
+    outline-offset: 1px;
+  }
+  .thickness input {
+    width: 4.5rem;
+    vertical-align: middle;
   }
   .save {
     border-color: var(--rule);

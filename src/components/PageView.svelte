@@ -18,7 +18,7 @@
    * scales them. A zoom change is then one custom-property write, not a relayout
    * of every span.
    */
-  import { reader } from '../lib/reader.svelte.ts'
+  import { reader, activeLayer } from '../lib/reader.svelte.ts'
   import { quadToScreen } from '../lib/coords.ts'
   import type { PageGeometry } from '../adapters/types.ts'
   import AnnotationLayer from './AnnotationLayer.svelte'
@@ -38,7 +38,8 @@
   let vp = $state<PageGeometry | null>(null)
 
   const inRange = $derived(pageIndex >= 0 && pageIndex < reader.pageCount)
-  const selecting = $derived(reader.tool === 'select')
+  const layer = $derived(activeLayer())
+  const selecting = $derived(layer === 'text')
   const magnifying = $derived(focused && reader.settings.magnifier !== 'off')
 
   /**
@@ -143,7 +144,7 @@
 >
   <canvas bind:this={canvas}></canvas>
 
-  <AnnotationLayer {pageIndex} interactive={!selecting} />
+  <AnnotationLayer {pageIndex} {vp} {layer} />
   <TextLayer {pageIndex} {vp} interactive={selecting} />
 
   {#if debugRect}
@@ -170,7 +171,12 @@
     height: calc(var(--ph) * var(--z) * 1px);
     background: var(--paper);
     box-shadow: 0 12px 34px rgba(0, 0, 0, 0.24);
-    transform-style: preserve-3d;
+    /* NOT preserve-3d. The leaf's own rotateY works from .book's perspective;
+       preserve-3d would only put THIS element's children into a 3D context,
+       and doing so puts each layer on its own plane — which silently kills the
+       highlight layer's mix-blend-mode, turning every highlight into an opaque
+       block over the text it is supposed to show through. */
+    transform-style: flat;
     /* Unfocused leaves recede slightly; the focused one comes forward. */
     transition: transform 0.28s ease, filter 0.28s ease, opacity 0.28s ease;
     filter: brightness(0.94);

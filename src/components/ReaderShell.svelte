@@ -5,19 +5,24 @@
    */
   import {
     reader,
+    acceptDraft,
+    annotationsSnapshot,
     focusedPage,
+    markSaved,
     setZoom,
     turnPage,
     watchDevicePixelRatio,
   } from '../lib/reader.svelte.ts'
   import { handleKey } from '../lib/keys.ts'
-  import { touchDocument } from '../lib/storage.ts'
+  import { discardDraft, putDraft, saveAnnotations, touchDocument } from '../lib/storage.ts'
   import PageView from './PageView.svelte'
   import Toolbar from './Toolbar.svelte'
   import SearchPanel from './SearchPanel.svelte'
   import DefinitionPopup from './DefinitionPopup.svelte'
 
   const TURN_MS = 280
+  /** Autosave cadence. Writes a DRAFT, never the saved state — invariant 6. */
+  const DRAFT_MS = 30_000
   /** Matches the 2rem padding on .book, top and bottom. */
   const BOOK_PADDING = 64
 
@@ -68,8 +73,44 @@
 
   $effect(() => () => clearTimeout(timer))
 
-  function save() {
-    // TODO(phase-3): saveAnnotations(docId, reader.annotations, reader.deletedIds)
+  let saving = $state(false)
+
+  async function save() {
+    const id = reader.docId
+    if (!id || saving) return
+    saving = true
+    try {
+      // Snapshotted before the await: the user can keep marking while it writes,
+      // and Dexie needs plain objects rather than Svelte's reactive proxies.
+      const marks = annotationsSnapshot()
+      const gone = [...reader.deletedIds]
+      await saveAnnotations(id, marks, gone)
+      markSaved()
+    } catch (err) {
+      console.error('save failed', err)
+      // Deliberately NOT clearing dirty: a failed save must keep saying unsaved.
+    } finally {
+      saving = false
+    }
+  }
+
+  /**
+   * The 30s autosave. It writes to the drafts table, which is never merged into
+   * the saved state on its own — otherwise "saved" would stop meaning anything.
+   */
+  $effect(() => {
+    const id = reader.docId
+    if (!id) return
+    const timer = setInterval(() => {
+      if (reader.dirty) void putDraft(id, annotationsSnapshot())
+    }, DRAFT_MS)
+    return () => clearInterval(timer)
+  })
+
+  function dismissDraft() {
+    const id = reader.docId
+    reader.draft = null
+    if (id) void discardDraft(id)
   }
 </script>
 
@@ -85,6 +126,18 @@
 
 <div class="reader" class:rtl>
   <Toolbar onsave={save} onturn={turn} onsearch={() => (searchOpen = !searchOpen)} />
+
+  {#if reader.draft}
+    <div class="recover" role="status">
+      <span>
+        Unsaved marks from
+        {new Date(reader.draft.savedAt).toLocaleString()}
+        were recovered ({reader.draft.annotations.length}).
+      </span>
+      <button onclick={acceptDraft}>Restore them</button>
+      <button onclick={dismissDraft}>Discard</button>
+    </div>
+  {/if}
 
   <div bind:this={book} class="book" data-turning={turning}>
     {#if reader.settings.spread}
@@ -104,7 +157,7 @@
   .reader {
     height: 100dvh;
     display: grid;
-    grid-template-rows: auto 1fr;
+    grid-template-rows: auto auto 1fr;
     background: var(--desk);
     overflow: hidden;
   }
@@ -124,6 +177,23 @@
   }
   .rtl .book {
     flex-direction: row-reverse;
+  }
+  .recover {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 0.75rem;
+    background: #fff4d6;
+    border-bottom: 1px solid var(--rule);
+    font-size: 0.8rem;
+  }
+  .recover button {
+    font: inherit;
+    padding: 0.25rem 0.6rem;
+    border: 1px solid var(--rule);
+    border-radius: 6px;
+    background: var(--paper);
+    cursor: pointer;
   }
   .gutter {
     width: 2px;

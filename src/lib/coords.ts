@@ -72,13 +72,21 @@ export function screenToPoint(
 /**
  * DOM rects from `Range.getClientRects()` are viewport-absolute; annotations
  * need them relative to the page element before conversion to page units.
+ *
+ * `scale` divides the result back into the scale-1 space every layer positions
+ * from. Callers pass zoom x the leaf's projected/layout ratio, which cancels
+ * both the zoom and the 3D transform on the page.
  */
-export function relativeTo(rect: DOMRect, pageEl: DOMRect): ScreenRect {
+export function relativeTo(
+  rect: DOMRect,
+  pageEl: DOMRect,
+  scale = 1,
+): ScreenRect {
   return {
-    left: rect.left - pageEl.left,
-    top: rect.top - pageEl.top,
-    width: rect.width,
-    height: rect.height,
+    left: (rect.left - pageEl.left) / scale,
+    top: (rect.top - pageEl.top) / scale,
+    width: rect.width / scale,
+    height: rect.height / scale,
   }
 }
 
