@@ -27,6 +27,8 @@
   const BOOK_PADDING = 64
 
   let searchOpen = $state(false)
+  /** Seeds the search box when the definition popup sends a term over. */
+  let searchSeed = $state('')
   let turning = $state<'fwd' | 'back' | null>(null)
   let book = $state<HTMLDivElement | null>(null)
 
@@ -107,6 +109,18 @@
     return () => clearInterval(timer)
   })
 
+  /**
+   * The popup's "Find in document". The nonce forces a remount, because `seed`
+   * is only the panel's INITIAL query — sending the same term twice has to
+   * restart the search, not silently do nothing.
+   */
+  let seedNonce = $state(0)
+  function findInDocument(term: string) {
+    searchSeed = term
+    seedNonce++
+    searchOpen = true
+  }
+
   function dismissDraft() {
     const id = reader.docId
     reader.draft = null
@@ -149,8 +163,12 @@
     {/if}
   </div>
 
-  {#if searchOpen}<SearchPanel onclose={() => (searchOpen = false)} />{/if}
-  <DefinitionPopup />
+  {#if searchOpen}
+    {#key seedNonce}
+      <SearchPanel seed={searchSeed} onclose={() => (searchOpen = false)} />
+    {/key}
+  {/if}
+  <DefinitionPopup onfind={findInDocument} />
 </div>
 
 <style>

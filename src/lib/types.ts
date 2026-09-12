@@ -68,6 +68,19 @@ export interface Annotation {
   updatedAt: number
 }
 
+/**
+ * One search result. Transient — hits live in the store for as long as the
+ * query does and are never persisted, which is what keeps them from being
+ * confused with a highlight.
+ */
+export interface SearchHit {
+  pageIndex: number
+  /** One quad per line the hit spans, in page units. */
+  quads: Quad[]
+  /** Surrounding text for the results list. */
+  snippet: string
+}
+
 export interface LookupRecord {
   term: string
   docId: string

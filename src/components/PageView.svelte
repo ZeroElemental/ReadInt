@@ -7,6 +7,7 @@
    *   3 ink             SVG paths
    *   4 text layer      transparent spans - selection, search, line boxes
    *   5 notes           positioned contenteditable boxes
+   *   5 search hits     transient, inert, never persisted
    *   6 magnifier       lens / band crop
    *
    * Layer 4 sits above 2 and 3 because selection has to be on top. The conflict
@@ -53,6 +54,21 @@
     typeof location !== 'undefined' &&
     new URLSearchParams(location.search).has('debug')
   const debugRect = $derived(vp && debug ? quadToScreen(DEBUG_QUAD, vp) : null)
+
+  /**
+   * Search hits on this page, positioned like every other layer: converted once
+   * in scale-1 CSS px, scaled by `--z`. Gated on `vp` — a quad without a
+   * viewport has no meaning (invariant 9).
+   */
+  const hitRects = $derived(
+    vp
+      ? reader.hits.flatMap((hit, i) =>
+          hit.pageIndex === pageIndex
+            ? hit.quads.map((q) => ({ box: quadToScreen(q, vp!), current: i === reader.activeHit }))
+            : [],
+        )
+      : [],
+  )
 
   $effect(() => {
     const adapter = reader.adapter
@@ -137,6 +153,7 @@
   class="page"
   class:focused
   data-side={side}
+  data-page={pageIndex}
   hidden={!inRange}
   style:--z={reader.zoom}
   style:--pw={vp?.width ?? 0}
@@ -146,6 +163,22 @@
 
   <AnnotationLayer {pageIndex} {vp} {layer} />
   <TextLayer {pageIndex} {vp} interactive={selecting} />
+
+  {#if hitRects.length}
+    <!-- Output only: inert and aria-hidden, so it can never contend for the
+         pointer with whatever tool is live (invariant 4). -->
+    <div class="search-hits" aria-hidden="true">
+      {#each hitRects as { box, current }, i (i)}
+        <div
+          class:current
+          style:left="calc({box.left} * var(--z) * 1px)"
+          style:top="calc({box.top} * var(--z) * 1px)"
+          style:width="calc({box.width} * var(--z) * 1px)"
+          style:height="calc({box.height} * var(--z) * 1px)"
+        ></div>
+      {/each}
+    </div>
+  {/if}
 
   {#if debugRect}
     <div
@@ -199,6 +232,26 @@
   canvas {
     display: block;
     /* Rendered at dpr x zoom; the adapter CSS-sizes it back down. */
+  }
+  .search-hits {
+    position: absolute;
+    inset: 0;
+    z-index: 5;
+    pointer-events: none;
+    /* On the LAYER, never on a rect — see invariant 10. The rects would
+       otherwise blend with their transparent parent and come out as opaque
+       blocks over the very words the reader is looking for. */
+    mix-blend-mode: multiply;
+  }
+  .search-hits div {
+    position: absolute;
+    border-radius: 2px;
+    /* Every hit on the page is faint; the one you are on is not. */
+    background: rgba(120, 190, 255, 0.45);
+  }
+  .search-hits .current {
+    background: rgba(255, 150, 40, 0.6);
+    outline: 1px solid rgba(200, 90, 0, 0.75);
   }
   .debug-quad {
     position: absolute;

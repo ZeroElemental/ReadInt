@@ -8,7 +8,13 @@
  * mistake that makes this app feel slow.
  */
 
-import type { Annotation, DocumentRecord, Settings, Tool } from './types.ts'
+import type {
+  Annotation,
+  DocumentRecord,
+  SearchHit,
+  Settings,
+  Tool,
+} from './types.ts'
 import { DEFAULT_SETTINGS } from './storage.ts'
 import type { DocAdapter } from '../adapters/types.ts'
 
@@ -44,6 +50,18 @@ export const reader = $state({
    * whole point of an explicit save is that nothing appears without asking.
    */
   draft: null as { annotations: Annotation[]; savedAt: number } | null,
+
+  /**
+   * In-document search results, and which one the reader is on. Never
+   * persisted, and deliberately not part of `annotations` — a hit must not be
+   * saveable or erasable.
+   *
+   * Reactive state is right here despite invariant 3: that rules out the 60fps
+   * paths (cursor, in-flight ink, crop rects), and a chosen search result
+   * changes at the speed of a keystroke.
+   */
+  hits: [] as SearchHit[],
+  activeHit: -1,
 
   settings: { ...DEFAULT_SETTINGS } as Settings,
 })
@@ -94,6 +112,33 @@ export function turnPage(delta: number) {
   reader.spreadStart = clampSpreadStart(reader.spreadStart + delta * step)
 }
 
+export function clearSearch() {
+  reader.hits = []
+  reader.activeHit = -1
+}
+
+/**
+ * Turn to a hit and make its page the leaf being read, so the magnifier and
+ * the zoom follow the reader to the result.
+ *
+ * Not routed through `turn()`: that takes a delta and animates a page turn,
+ * and a jump across the document is neither.
+ */
+export function goToHit(index: number) {
+  const hit = reader.hits[index]
+  if (!hit) return
+
+  reader.activeHit = index
+  reader.spreadStart = clampSpreadStart(hit.pageIndex)
+
+  if (!reader.settings.spread) return
+  // Invert focusedPage(): it adds 1 when `focusSide` lands on the second page
+  // of the pair, so pick the side that makes it add exactly what we need.
+  const rightFirst = reader.settings.readingDirection === 'rtl'
+  const second = hit.pageIndex !== reader.spreadStart
+  reader.focusSide = second !== rightFirst ? 'right' : 'left'
+}
+
 /** Enter the reader. The adapter is already open; this just adopts it. */
 export function openDoc(
   rec: DocumentRecord,
@@ -111,6 +156,7 @@ export function openDoc(
   reader.draft = draft
   reader.focusSide = 'left'
   reader.spreadStart = clampSpreadStart(rec.lastPageIndex)
+  clearSearch()
 }
 
 /**
@@ -180,6 +226,7 @@ export function closeDoc() {
   reader.deletedIds = []
   reader.dirty = false
   reader.draft = null
+  clearSearch()
 }
 
 /**

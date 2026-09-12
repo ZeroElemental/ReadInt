@@ -15,3 +15,9 @@ firebase-debug.log
 
 .DS_Store
 *.local
+
+# Cloud Functions build output
+functions/lib/
+
+# Playwright MCP scratch
+.playwright-mcp/

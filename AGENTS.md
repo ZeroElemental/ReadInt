@@ -6,8 +6,19 @@ follows their own cursor down the page the way a finger tracks a line. On top of
 that: highlighting, underlining, freehand ink, sticky notes, selection-to-
 definition, in-document search, and explicit save/restore of all markup.
 
-**Local-first.** Documents never leave the device. The only thing crossing the
-network is a term and one sentence of context, to `/api/define`.
+**Local-first.** Documents never leave the device. Exactly two things cross the
+network, both assembled in `DefinitionPopup.svelte`:
+
+| To | What it gets |
+|---|---|
+| `dictionaryapi.dev` | a single selected word, nothing else |
+| `/api/define` | the selected term + its sentence, hard-capped at 300 chars |
+
+The context is the sentence the term sits in. On a page with sparse punctuation
+that walk can reach the page edges, so the cap — not the sentence boundary — is
+what actually bounds it. Treat 300 characters of surrounding text as the claim.
+
+Never the file, never a page of text, never an annotation.
 
 ## Stack
 
@@ -73,6 +84,14 @@ These are load-bearing. Breaking one produces bugs that look like something else
     `preserve-3d` isolates every layer onto its own plane. The leaf's rotation
     comes from `.book`'s perspective and never needed it.
 
+11. **The network boundary is a function call, not a policy.** What may leave
+    the device is capped by `sentenceAround`'s default (`MAX_CONTEXT`, 300
+    chars) in `src/lib/search.ts`, and that function is the only way context is
+    ever assembled. `functions/src/index.ts` *refuses* anything longer instead
+    of truncating it, so the two sides cannot drift apart quietly. Raising the
+    cap, or joining sentences to "give the model more to work with", is how the
+    local-first claim at the top of this file stops being true.
+
 ## Layout
 
 ```
@@ -84,6 +103,7 @@ src/
     storage.ts         Dexie schema + the only IndexedDB access
     keys.ts            keyboard map (a plain object, not a library)
     ink.ts             perfect-freehand -> filled SVG outline, in page units
+    search.ts          runs -> one string -> folded -> hits -> quads (pure)
   adapters/
     types.ts           DocAdapter interface + PageGeometry
     PdfAdapter.ts      pdf.js; also handles scanned PDFs via OCR
@@ -98,6 +118,8 @@ src/
     DefinitionPopup.svelte  dictionary -> AI fallback, cached
     SearchPanel.svelte in-document search
     Toolbar.svelte / Library.svelte
+functions/
+    src/index.ts       POST /api/define — the only server, no framework
 ```
 
 ## Commands
@@ -142,6 +164,8 @@ the zoom and the leaf's projected/layout ratio, which cancels its 3D transform:
 | Save appears to work but nothing persists | a reactive proxy reached Dexie; see invariant 8 |
 | A note collapses, or a fresh doc opens dirty | something rendered or measured before `vp`; see invariant 9 |
 | Pointer feels sticky | a forced layout on the move path, or reactive state on a 60fps path |
+| A search finds nothing it should | the joining or folding rules in `search.ts`; add the case to `search.test.ts` first |
+| A search hit lands beside the word | `hitQuads` proportional slicing, or the quad came from the wrong run |
 
 See `PROGRESS.md` for the working checklist and `ROADMAP.md` for the full phase
 plan — what each phase covers, what is done, and what is left.

@@ -4,7 +4,9 @@ Every phase, what it covers, what is done, and what is left. `PROGRESS.md` is
 the working checklist you tick as you go; this is the map you read first when
 picking the work back up.
 
-**Where things stand:** Phases 0–3 are complete and pushed. **Phase 4 is next.**
+**Where things stand:** Phases 0–4 are built, with the Phase-4 **deploy still
+outstanding** — it needs a Firebase project and a Gemini key, which are yours to
+create. **Phase 5 is next.**
 
 | Phase | Covers | State |
 |---|---|---|
@@ -12,8 +14,8 @@ picking the work back up.
 | 1 | Shell + PDF render + text layer | ✅ Done |
 | 2 | Magnifier (lens + band) | ✅ Done |
 | 3 | Annotations + explicit save | ✅ Done |
-| 4 | Definitions, in-document search, first deploy | ⬜ **Next** |
-| 5 | OCR for scanned PDFs and images | ⬜ Not started |
+| 4 | Definitions, in-document search, first deploy | 🟡 Built; deploy pending |
+| 5 | OCR for scanned PDFs and images | ⬜ **Next** |
 | 6 | EPUB | ⬜ Not started |
 | — | Deferred: sync, AI study layer, export, analytics | ⬜ Needs a backend |
 
@@ -87,33 +89,49 @@ and 1.95× alike; the autosave wrote a draft of 4 while the saved table stayed a
 
 ---
 
-## Phase 4 — Definitions, search, first deploy ⬜ **Next**
+## Phase 4 — Definitions, search, first deploy 🟡
 
-- [ ] Selection → popup, positioned from the range rect
-- [ ] dictionaryapi.dev for single words
-- [ ] `/api/define` — Hono on Cloud Functions gen2, Gemini Flash, term +
-      surrounding sentence
-- [ ] Dexie lookup cache keyed `(term, docId)`
-- [ ] `SearchPanel` — normalise case/diacritics/ligatures/hyphen-at-line-break
-- [ ] Search hits → quads, prev/next navigation
-- [ ] `firebase.json`: SPA rewrite + `/api/**` → function; deploy
-- [ ] `$1` budget alert, `maxInstances: 3`, per-IP rate limit
+- [x] Selection → popup, positioned from the range rect
+- [x] dictionaryapi.dev for single words
+- [x] `/api/define` — Cloud Functions gen2, Gemini Flash, term + surrounding
+      sentence (**written, not deployed**)
+- [x] Dexie lookup cache keyed `(term, docId)`
+- [x] `SearchPanel` — normalise case/diacritics/ligatures/hyphen-at-line-break
+- [x] Search hits → quads, prev/next navigation
+- [x] `firebase.json`: SPA rewrite + `/api/**` → function
+- [x] `maxInstances: 3`, per-IP rate limit
+- [ ] **Deploy.** Needs a Firebase project, and therefore you:
+
+```
+firebase login
+firebase projects:create            # or use an existing one
+firebase use --add
+firebase functions:secrets:set GEMINI_API_KEY
+npm run build && firebase deploy
+```
+
+- [ ] `$1` budget alert on the project (Billing → Budgets & alerts). Not in
+      `firebase.json` — it is a Cloud Billing setting, not a deploy artifact.
+
+**No framework in the function, and that is deliberate.** This said Hono; for
+one POST route Hono turned out to be a dependency plus a real hazard —
+`firebase-functions` consumes the request stream to populate `req.body`, so a
+fetch-style adapter mounted on top of it waits forever for a body that has
+already been read. `onRequest` hands over a parsed body directly. Add a router
+when there is a second route to justify one.
 
 **Verify:** "the" → dictionary. A technical phrase → AI fallback with the
 document's sense. Same phrase again → cache hit, no network request. Search a
 hyphenated line break and find it.
 
-**Notes for whoever picks this up.** This is the first phase that leaves the
-device, so the privacy claim in `AGENTS.md` becomes load-bearing: only a term
-and one sentence of context may cross the network, never the document. The
-search normaliser is the fiddly part and is pure — give it a `node --test` file
-of its own. `getLookup`/`putLookup` already exist in `storage.ts`; the popup
-should hit the cache before the network. `DefinitionPopup.svelte` and
-`SearchPanel.svelte` are still Phase-0 stubs.
+**The privacy boundary is now invariant 11 in `AGENTS.md`**, and it is code
+rather than prose: `sentenceAround`'s `MAX_CONTEXT` caps what is assembled, and
+the function refuses anything longer instead of truncating it, so the client and
+the server cannot drift apart.
 
 ---
 
-## Phase 5 — OCR ⬜
+## Phase 5 — OCR ⬜ **Next**
 
 - [ ] `workers/ocr.worker.ts` — tesseract.js in a Web Worker
 - [ ] Scanned detection: < ~20 chars/page on a sample → queue OCR
@@ -175,6 +193,14 @@ in place for it.
   erase targets are real focusable buttons.
 - **Line grouping uses a fixed 1.5 pt baseline tolerance.** Fine for body text;
   a document mixing very large and very small type on one line could split it.
+- **A search hit is sliced proportionally across its run**, so its box assumes
+  every glyph in that run is the same width. Within a glyph on body text.
+  Exact slicing needs per-character advances, which `TextItem` does not carry.
+- **The first search of a document extracts every page's text**, which is the
+  slow scan you see in the panel. `pageText` caches it in Dexie, so it is paid
+  once per document, and hits stream in as pages are done rather than at the end.
+- **Definitions are English-only** — that is what dictionaryapi.dev covers. A
+  non-English term falls through to `/api/define`, which handles it fine.
 
 ## How to verify anything here
 

@@ -6,39 +6,36 @@ it is the handoff between sessions.
 For the plan — every phase, what it covers, what is left — see `ROADMAP.md`.
 For the architecture and its invariants, see `AGENTS.md`.
 
-**Status:** Phases 0–3 complete, pushed to `main`. Phase 4 next.
-**Last updated:** 2026-09-10
+**Status:** Phases 0–3 complete and pushed. Phase 4 built and verified in the
+browser; its **deploy is the one thing outstanding** and needs a Firebase
+project. Phase 5 next.
+**Last updated:** 2026-09-13
 
 ---
 
 ## Start here next session
 
-Phase 4: definitions, in-document search, first deploy. Full checklist and
-notes in `ROADMAP.md`.
+Two independent things, in either order.
 
-First moves, in order:
+**1. Deploy Phase 4.** Everything is written — `functions/src/index.ts`,
+`firebase.json`, secret handling, rate limit. It has never run against a real
+Firebase project or a real Gemini key. Steps are in `ROADMAP.md`; they need
+`firebase login`, so they are yours, not an agent's. Until then the AI fallback
+correctly says "Definition service not available yet" and the dictionary path
+works on its own.
 
-1. `DefinitionPopup.svelte` and `SearchPanel.svelte` are still Phase-0 stubs —
-   read them first, the shapes are already committed.
-2. Selection → popup. `TextLayer.commitSelection()` already shows how to get a
-   live selection and convert its rects; the popup needs the range rect for
-   placement, not quads.
-3. Wire dictionaryapi.dev for single words, hitting `getLookup`/`putLookup`
-   (already in `storage.ts`) **before** the network.
-4. The search normaliser — case, diacritics, ligatures, hyphen-at-line-break —
-   is pure and fiddly. Put it in its own module with its own `node --test` file
-   before wiring any UI to it.
-5. `/api/define` and deploy last, once the local half works.
-
-Careful: Phase 4 is the first thing that leaves the device. Only a term and one
-sentence of context may cross the network — never the document.
+**2. Phase 5: OCR.** The hook is already in `PdfAdapter.getTextItems` next to
+`SCANNED_CHAR_THRESHOLD`. Invariant 2 is the whole point — OCR output must
+arrive as the same `TextItem` shape, and if it does, search and definitions
+work on a scan with no new code, because both go through `pageText()`.
 
 Standing checks, all green as of this commit:
 
 ```
-npm test      # 18 passing
-npm run check # 0 errors, 0 warnings across 339 files
-npm run build # clean; pdf.js splits into its own chunk
+npm test      # 27 passing (18 + 9 for search)
+npm run check # 0 errors, 0 warnings across 341 files
+npm run build # clean; pdf.js still splits into its own chunk
+cd functions && npx tsc --noEmit   # clean
 ```
 
 ---
@@ -196,8 +193,76 @@ single-device; worth a tab lock or a per-tab draft id when sync arrives.
 
 ---
 
-## Phases 4–6 and beyond
+## Phase 4 — Definitions + search ✅ (deploy pending)
+
+- [x] `lib/search.ts` — flatten, fold, find, map hits back to quads (pure)
+- [x] `lib/search.test.ts` — 9 cases, `node --test`
+- [x] Selection → popup, placed from the range rect, cache → dictionary → AI
+- [x] Dexie lookup cache keyed `(folded term, docId)`
+- [x] `SearchPanel` — streaming scan, prev/next, page + focus-side navigation
+- [x] Transient hit overlay in `PageView`, inert and never persisted
+- [x] `functions/` + `firebase.json` written and typechecking
+- [ ] Deployed — needs a Firebase project and a Gemini key. See `ROADMAP.md`.
+
+**A page's text is not a string, and that is the whole problem.** It is a few
+hundred positioned runs, split wherever the font changed, wrapped across lines,
+with words cut in half by a hyphen at the break. `search.ts` flattens them into
+one string while remembering which run owns each character, folds that (NFKD,
+strip combining marks, lowercase, collapse whitespace) with a map back to the
+raw text, searches the folded copy, and walks both maps home. Two joining rules
+carry the weight: within a line a space goes in only when there is a real
+horizontal gap, because pdf.js splits a run at every font change; across a line
+a trailing hyphen is dropped entirely.
+
+**The privacy boundary is now code, not prose** — invariant 11. `MAX_CONTEXT`
+in `search.ts` caps what is assembled, and the function *refuses* anything
+longer rather than truncating it, so the two sides cannot drift apart.
+
+**No framework in the function.** The roadmap said Hono; for one POST route it
+was a dependency plus a real hazard — `firebase-functions` consumes the request
+stream to fill `req.body`, so a fetch-style adapter on top waits forever for a
+body already read.
+
+**Verified in a real browser** (Playwright, against a regenerated 4-page test
+PDF that prints at known page coordinates):
+
+- "understand" is found on all 4 pages where the source reads `under-` /
+  `stand` across a line break. "cafe" finds "café", "resume" finds "résumé",
+  and a two-word phrase spanning a real word gap is found.
+- The hit overlay measured `left=72.26 top=216.28` at zoom 0.488 / 0.61 /
+  0.763 / 0.954 — the same page coordinates at every one. In the same frame the
+  text span for that word measured `72.26 / 216.28` too, so the mark sits
+  exactly on the glyphs rather than merely being self-consistent.
+- Sub-word slicing: searching "WORD" inside a 10-character "ANCHORWORD" run
+  drew `left=144.45 width=48.08` against a predicted `144.43 / 48.12`.
+- Next/prev walked all 4 hits, moving focus left→right within a spread, turning
+  to the next spread, and wrapping both ways, with exactly one `.current`
+  overlay alive throughout.
+- **Cache: a seeded lookup row produced the definition with 0 network
+  requests.** The uncached path sent exactly one request, to dictionaryapi.dev,
+  carrying only the word.
+- The `/api/define` body was exactly `{term, sentence}` — no document, no page
+  text, no annotations.
+- With Highlight active a selection makes a mark and does *not* open the popup;
+  switching back to Select restores it. Invariant 4 survived a second
+  `pointerup` listener.
+
+**One real bug the browser found: no timeout.** The dictionary fetch hung for
+38 s before failing, and the card sat on "Looking up…" the whole time — on a
+captive portal or a dead tunnel it would have sat there indefinitely. Both
+requests now carry an 8 s deadline (`AbortSignal.any` of the user's cancel and
+`AbortSignal.timeout`), a dictionary that is merely unreachable falls through
+to the model instead of aborting the lookup, and a timeout says so. After the
+fix the same selection settled in 259 ms.
+
+**Not verified, and cannot be from here:** a real dictionary response, and the
+whole `/api/define` path end to end. The sandbox has no outbound network, and
+the function has never run. That is what the deploy step is for.
+
+---
+
+## Phases 5–6 and beyond
 
 Moved to `ROADMAP.md` so the plan lives in one place and cannot drift out of
-sync with this log. It carries the full checklists for definitions/search/deploy
-(4), OCR (5), EPUB (6), the deferred backend work, and the known limitations.
+sync with this log. It carries the full checklists for the Phase-4 deploy, OCR
+(5), EPUB (6), the deferred backend work, and the known limitations.
