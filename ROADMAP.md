@@ -100,18 +100,12 @@ and 1.95× alike; the autosave wrote a draft of 4 while the saved table stayed a
 - [x] Search hits → quads, prev/next navigation
 - [x] `firebase.json`: SPA rewrite + `/api/**` → function
 - [x] `maxInstances: 3`, per-IP rate limit
-- [ ] **Deploy.** Needs a Firebase project, and therefore you:
-
-```
-firebase login
-firebase projects:create            # or use an existing one
-firebase use --add
-firebase functions:secrets:set GEMINI_API_KEY
-npm run build && firebase deploy
-```
-
-- [ ] `$1` budget alert on the project (Billing → Budgets & alerts). Not in
-      `firebase.json` — it is a Cloud Billing setting, not a deploy artifact.
+- [ ] **Deploy.** Needs your Google account, so it cannot be automated:
+      Firebase CLI, a project on the **Blaze plan** (gen2 functions do not exist
+      on Spark, and a Spark function cannot call Gemini at all), a Gemini key,
+      the secret, a $1 budget alert, then `firebase deploy`.
+      **Full checklist in [`DEPLOY.md`](DEPLOY.md)** — kept there rather than
+      duplicated here, so the steps have one home and cannot drift.
 
 **No framework in the function, and that is deliberate.** This said Hono; for
 one POST route Hono turned out to be a dependency plus a real hazard —
@@ -185,6 +179,11 @@ in place for it.
 
 ## Known limitations
 
+- **Only PDFs open.** `detectFormat` recognises images and EPUB, but their
+  adapters are stubs that throw, so dropping one surfaces
+  `…Adapter.open not implemented` in the library. Phases 5 and 6 respectively.
+  The format detection is deliberately ahead of the adapters — the shape is
+  committed so the shell never learns what it is reading.
 - **Two tabs on one document share a `drafts` row** and overwrite each other's
   autosave. Out of scope while the app is single-device; wants a tab lock or a
   per-tab draft id when sync arrives.

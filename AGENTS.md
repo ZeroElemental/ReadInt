@@ -6,6 +6,11 @@ follows their own cursor down the page the way a finger tracks a line. On top of
 that: highlighting, underlining, freehand ink, sticky notes, selection-to-
 definition, in-document search, and explicit save/restore of all markup.
 
+**Only the PDF path is implemented.** `ImageAdapter` and `EpubAdapter` are
+stubs that throw on open (Phases 5 and 6), and `/api/define` is written but has
+never been deployed. Do not assume a feature works because its shape exists —
+`ROADMAP.md` says what is real.
+
 **Local-first.** Documents never leave the device. Exactly two things cross the
 network, both assembled in `DefinitionPopup.svelte`:
 
@@ -129,6 +134,9 @@ npm run dev      # vite dev server
 npm run build    # production build
 npm run check    # svelte-check (types + a11y)
 npm test         # node --test, no framework
+
+cd functions && npx tsc --noEmit   # the backend typechecks on its own; the
+                                   # root tsconfig's `include` excludes it
 ```
 
 ## Conventions
@@ -168,4 +176,6 @@ the zoom and the leaf's projected/layout ratio, which cancels its 3D transform:
 | A search hit lands beside the word | `hitQuads` proportional slicing, or the quad came from the wrong run |
 
 See `PROGRESS.md` for the working checklist and `ROADMAP.md` for the full phase
-plan — what each phase covers, what is done, and what is left.
+plan — what each phase covers, what is done, and what is left. `README.md` is
+the front door for anyone not already working on this, and `DEPLOY.md` carries
+the one-time setup for the definitions backend.

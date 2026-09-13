@@ -6,9 +6,9 @@ it is the handoff between sessions.
 For the plan — every phase, what it covers, what is left — see `ROADMAP.md`.
 For the architecture and its invariants, see `AGENTS.md`.
 
-**Status:** Phases 0–3 complete and pushed. Phase 4 built and verified in the
-browser; its **deploy is the one thing outstanding** and needs a Firebase
-project. Phase 5 next.
+**Status:** Phases 0–4 built and pushed (`0c3371f`). Phase 4 is verified in the
+browser but its **deploy is outstanding** and needs a Firebase project — see
+`DEPLOY.md`. Phase 5 next.
 **Last updated:** 2026-09-13
 
 ---
@@ -19,10 +19,11 @@ Two independent things, in either order.
 
 **1. Deploy Phase 4.** Everything is written — `functions/src/index.ts`,
 `firebase.json`, secret handling, rate limit. It has never run against a real
-Firebase project or a real Gemini key. Steps are in `ROADMAP.md`; they need
-`firebase login`, so they are yours, not an agent's. Until then the AI fallback
-correctly says "Definition service not available yet" and the dictionary path
-works on its own.
+Firebase project or a real Gemini key. **Checklist in `DEPLOY.md`.** It needs
+`firebase login` and a billing decision, so it is yours, not an agent's — and
+note the Blaze-plan requirement, which blocks the deploy outright rather than
+degrading it. Until then the AI fallback correctly says "Definition service not
+available yet" and the dictionary path works on its own.
 
 **2. Phase 5: OCR.** The hook is already in `PdfAdapter.getTextItems` next to
 `SCANNED_CHAR_THRESHOLD`. Invariant 2 is the whole point — OCR output must
