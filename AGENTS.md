@@ -7,9 +7,14 @@ that: highlighting, underlining, freehand ink, sticky notes, selection-to-
 definition, in-document search, and explicit save/restore of all markup.
 
 **Only the PDF path is implemented.** `ImageAdapter` and `EpubAdapter` are
-stubs that throw on open (Phases 5 and 6), and `/api/define` is written but has
-never been deployed. Do not assume a feature works because its shape exists —
-`ROADMAP.md` says what is real.
+stubs that throw on open (Phases 5 and 6). Do not assume a feature works because
+its shape exists — `ROADMAP.md` says what is real.
+
+`/api/define` is deployed and live (`readint-6b7d2`, `asia-south1`). The model
+id in `functions/src/index.ts` is a **dependency with a support window, not a
+constant** — `gemini-2.5-flash` was closed to new projects between that line
+being written and the project being created. If definitions start answering
+`502`, check the upstream status before suspecting the client.
 
 **Local-first.** Documents never leave the device. Exactly two things cross the
 network, both assembled in `DefinitionPopup.svelte`:
@@ -174,6 +179,8 @@ the zoom and the leaf's projected/layout ratio, which cancels its 3D transform:
 | Pointer feels sticky | a forced layout on the move path, or reactive state on a 60fps path |
 | A search finds nothing it should | the joining or folding rules in `search.ts`; add the case to `search.test.ts` first |
 | A search hit lands beside the word | `hitQuads` proportional slicing, or the quad came from the wrong run |
+| A phrase definition returns `502` | the upstream call, not the client: an expired model id, a depleted prepay balance, or an empty answer because thinking spent `maxOutputTokens`. `firebase functions:log` carries the real status |
+| A definition is correct but takes ~4s | `thinkingLevel` — `'minimal'` is the floor for 3.x Flash and roughly halves it |
 
 See `PROGRESS.md` for the working checklist and `ROADMAP.md` for the full phase
 plan — what each phase covers, what is done, and what is left. `README.md` is

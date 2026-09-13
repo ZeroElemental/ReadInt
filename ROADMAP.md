@@ -4,9 +4,9 @@ Every phase, what it covers, what is done, and what is left. `PROGRESS.md` is
 the working checklist you tick as you go; this is the map you read first when
 picking the work back up.
 
-**Where things stand:** Phases 0–4 are built, with the Phase-4 **deploy still
-outstanding** — it needs a Firebase project and a Gemini key, which are yours to
-create. **Phase 5 is next.**
+**Where things stand:** Phases 0–4 are done, deploy included — the app is live
+at <https://readint-6b7d2.web.app> with `/api/define` answering from
+`asia-south1`. **Phase 5 is next.**
 
 | Phase | Covers | State |
 |---|---|---|
@@ -14,7 +14,7 @@ create. **Phase 5 is next.**
 | 1 | Shell + PDF render + text layer | ✅ Done |
 | 2 | Magnifier (lens + band) | ✅ Done |
 | 3 | Annotations + explicit save | ✅ Done |
-| 4 | Definitions, in-document search, first deploy | 🟡 Built; deploy pending |
+| 4 | Definitions, in-document search, first deploy | ✅ Done |
 | 5 | OCR for scanned PDFs and images | ⬜ **Next** |
 | 6 | EPUB | ⬜ Not started |
 | — | Deferred: sync, AI study layer, export, analytics | ⬜ Needs a backend |
@@ -89,21 +89,19 @@ and 1.95× alike; the autosave wrote a draft of 4 while the saved table stayed a
 
 ---
 
-## Phase 4 — Definitions, search, first deploy 🟡
+## Phase 4 — Definitions, search, first deploy ✅
 
 - [x] Selection → popup, positioned from the range rect
 - [x] dictionaryapi.dev for single words
 - [x] `/api/define` — Cloud Functions gen2, Gemini Flash, term + surrounding
-      sentence (**written, not deployed**)
+      sentence
 - [x] Dexie lookup cache keyed `(term, docId)`
 - [x] `SearchPanel` — normalise case/diacritics/ligatures/hyphen-at-line-break
 - [x] Search hits → quads, prev/next navigation
 - [x] `firebase.json`: SPA rewrite + `/api/**` → function
 - [x] `maxInstances: 3`, per-IP rate limit
-- [ ] **Deploy.** Needs your Google account, so it cannot be automated:
-      Firebase CLI, a project on the **Blaze plan** (gen2 functions do not exist
-      on Spark, and a Spark function cannot call Gemini at all), a Gemini key,
-      the secret, a $1 budget alert, then `firebase deploy`.
+- [x] **Deployed** to `readint-6b7d2`, function `api` in `asia-south1`, with a
+      $1 budget alert and a 1-day artifact cleanup policy.
       **Full checklist in [`DEPLOY.md`](DEPLOY.md)** — kept there rather than
       duplicated here, so the steps have one home and cannot drift.
 
@@ -117,6 +115,12 @@ when there is a second route to justify one.
 **Verify:** "the" → dictionary. A technical phrase → AI fallback with the
 document's sense. Same phrase again → cache hit, no network request. Search a
 hyphenated line break and find it.
+
+**The deploy taught more than the code did.** `gemini-2.5-flash` turned out to
+be closed to new projects, 3.x Flash cannot switch thinking off, thinking
+tokens are charged against `maxOutputTokens` — so the original 200-token cap
+would have returned empty answers — and `thinkingLevel` moved a lookup from
+4.5 s to 2.0 s. Full account in `PROGRESS.md`.
 
 **The privacy boundary is now invariant 11 in `AGENTS.md`**, and it is code
 rather than prose: `sentenceAround`'s `MAX_CONTEXT` caps what is assembled, and
@@ -200,6 +204,14 @@ in place for it.
   once per document, and hits stream in as pages are done rather than at the end.
 - **Definitions are English-only** — that is what dictionaryapi.dev covers. A
   non-English term falls through to `/api/define`, which handles it fine.
+- **An AI definition takes about two seconds.** Measured 1.8–2.2 s against the
+  deployed endpoint at `thinkingLevel: 'minimal'`, which is the floor — 3.x
+  Flash cannot switch thinking off. A dictionary hit is far quicker and a cached
+  one is instant, so this is only the cost of a phrase seen for the first time.
+- **The function's rate limit is per instance.** It is an in-memory `Map`, so
+  with `maxInstances: 3` the real ceiling is 3× the configured 20/min. Enough to
+  stop a runaway loop; not a defence. Wants Firestore if this serves real
+  traffic.
 
 ## How to verify anything here
 

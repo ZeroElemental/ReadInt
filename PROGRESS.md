@@ -6,26 +6,17 @@ it is the handoff between sessions.
 For the plan — every phase, what it covers, what is left — see `ROADMAP.md`.
 For the architecture and its invariants, see `AGENTS.md`.
 
-**Status:** Phases 0–4 built and pushed (`0c3371f`). Phase 4 is verified in the
-browser but its **deploy is outstanding** and needs a Firebase project — see
-`DEPLOY.md`. Phase 5 next.
+**Status:** Phases 0–4 complete, **including the deploy**. The app is live at
+<https://readint-6b7d2.web.app> and `/api/define` answers from `asia-south1`.
+Phase 5 next.
 **Last updated:** 2026-09-13
 
 ---
 
 ## Start here next session
 
-Two independent things, in either order.
-
-**1. Deploy Phase 4.** Everything is written — `functions/src/index.ts`,
-`firebase.json`, secret handling, rate limit. It has never run against a real
-Firebase project or a real Gemini key. **Checklist in `DEPLOY.md`.** It needs
-`firebase login` and a billing decision, so it is yours, not an agent's — and
-note the Blaze-plan requirement, which blocks the deploy outright rather than
-degrading it. Until then the AI fallback correctly says "Definition service not
-available yet" and the dictionary path works on its own.
-
-**2. Phase 5: OCR.** The hook is already in `PdfAdapter.getTextItems` next to
+**Phase 5: OCR.** The deploy is done, so this is the only thing outstanding.
+The hook is already in `PdfAdapter.getTextItems` next to
 `SCANNED_CHAR_THRESHOLD`. Invariant 2 is the whole point — OCR output must
 arrive as the same `TextItem` shape, and if it does, search and definitions
 work on a scan with no new code, because both go through `pageText()`.
@@ -37,6 +28,10 @@ npm test      # 27 passing (18 + 9 for search)
 npm run check # 0 errors, 0 warnings across 341 files
 npm run build # clean; pdf.js still splits into its own chunk
 cd functions && npx tsc --noEmit   # clean
+
+curl -s -X POST https://readint-6b7d2.web.app/api/define \
+  -H 'content-type: application/json' \
+  -d '{"term":"quad","sentence":"Each quad is stored in page units."}'
 ```
 
 ---
@@ -194,7 +189,7 @@ single-device; worth a tab lock or a per-tab draft id when sync arrives.
 
 ---
 
-## Phase 4 — Definitions + search ✅ (deploy pending)
+## Phase 4 — Definitions + search ✅
 
 - [x] `lib/search.ts` — flatten, fold, find, map hits back to quads (pure)
 - [x] `lib/search.test.ts` — 9 cases, `node --test`
@@ -203,7 +198,7 @@ single-device; worth a tab lock or a per-tab draft id when sync arrives.
 - [x] `SearchPanel` — streaming scan, prev/next, page + focus-side navigation
 - [x] Transient hit overlay in `PageView`, inert and never persisted
 - [x] `functions/` + `firebase.json` written and typechecking
-- [ ] Deployed — needs a Firebase project and a Gemini key. See `ROADMAP.md`.
+- [x] Deployed — `readint-6b7d2`, function `api` in `asia-south1`
 
 **A page's text is not a string, and that is the whole problem.** It is a few
 hundred positioned runs, split wherever the font changed, wrapped across lines,
@@ -256,9 +251,45 @@ requests now carry an 8 s deadline (`AbortSignal.any` of the user's cancel and
 to the model instead of aborting the lookup, and a timeout says so. After the
 fix the same selection settled in 259 ms.
 
-**Not verified, and cannot be from here:** a real dictionary response, and the
-whole `/api/define` path end to end. The sandbox has no outbound network, and
-the function has never run. That is what the deploy step is for.
+### The deploy, and the four things it caught
+
+Live at <https://readint-6b7d2.web.app>; function `api`, gen2, Node 22,
+`asia-south1`, secret `GEMINI_API_KEY` v1 out of Secret Manager. Everything
+below was measured against the deployed URL, not a local emulator.
+
+**1. `gemini-2.5-flash` is closed to new projects.** It answers `404` with a
+note pointing at `gemini-3.6-flash`. A model id is not a constant you write
+once — it is a dependency with a support window, and this one expired between
+the code being written and the project being created.
+
+**2. Thinking tokens are charged against `maxOutputTokens`.** 3.x Flash cannot
+switch thinking off at all. The original `maxOutputTokens: 200` would have been
+spent reasoning and returned an EMPTY answer — which this code would have
+reported as "no definition returned", diagnosing a budget problem as a model
+problem. Now 800 with `thinkingLevel: 'minimal'`.
+
+**3. `parts[0]` is no longer the answer.** A thinking model returns its
+reasoning in the same array, flagged `thought`. The parser takes the first part
+that is not one.
+
+**4. `thinkingLevel` is a latency control, not just a cost one.** At `'low'` a
+lookup took **4.2–4.8 s**; at `'minimal'`, **1.8–2.2 s** — and the answers came
+back *more* specific, not less. The client's deadline is 8 s, so `'low'` fit
+inside it while still being far too slow to sit under a popup. Worth knowing
+that the budget that keeps a request legal is not the budget that makes it feel
+instant.
+
+**Verified against the live endpoint:** a real definition that uses the
+surrounding sentence (asked for "coordinate system" in a sentence about page
+units, the answer explained why zoom does not move an annotation); the
+no-sentence path; and every guard — `301` characters of context → `400`,
+exactly `300` → `200`, `GET` → `405`, an unknown path → `404`, a missing term
+→ `400`. The privacy cap refuses rather than truncating, on the server, exactly
+as invariant 11 requires.
+
+**Cost guards in place:** `maxInstances: 3`, `timeoutSeconds: 20`, 256 MiB, a
+per-IP rate limit, a $1 budget alert, and a 1-day Artifact Registry cleanup
+policy so old build images cannot accumulate into a bill.
 
 ---
 

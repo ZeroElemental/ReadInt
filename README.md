@@ -20,7 +20,7 @@ trigger yourself.
 | Explicit save, draft recovery | ✅ Working |
 | In-document search | ✅ Working |
 | Definitions — single words (dictionary) | ✅ Working |
-| Definitions — phrases (AI fallback) | ⚠️ Needs a deploy — see [DEPLOY.md](DEPLOY.md) |
+| Definitions — phrases (AI fallback) | ✅ Working — [deployed](DEPLOY.md) |
 | **Images** (PNG/JPG) + OCR for scanned PDFs | ⬜ Not built — Phase 5 |
 | **EPUB** | ⬜ Not built — Phase 6 |
 
@@ -28,9 +28,11 @@ Dropping an image or an EPUB today fails with `…Adapter.open not implemented`.
 The file type is recognised; the adapter behind it is still a stub. PDFs are
 the supported path.
 
-Until the definition backend is deployed, single-word lookups work on their own
-through a public dictionary, and anything it can't answer says "Definition
-service not available yet" rather than failing silently.
+A live deployment runs at <https://readint-6b7d2.web.app>. Running your own is
+a fifteen-minute job — [DEPLOY.md](DEPLOY.md) has the checklist. Without one the
+app still works: single-word lookups go through a public dictionary, and
+anything it can't answer says "Definition service not available yet" rather
+than failing silently.
 
 ## Quick start
 
@@ -71,8 +73,15 @@ definition:
 | `dictionaryapi.dev` | the single word you selected, nothing else |
 | `/api/define` (your own deployment) | the selected term, plus its sentence, hard-capped at 300 characters |
 
+`/api/define` passes that term and sentence to Gemini and returns a sentence or
+two. It is deployed against a **paid** Gemini key, which matters: on the paid
+tier Google "doesn't use your prompts ... or responses to improve our
+products", whereas the free tier does. If you deploy your own, put the key on a
+project with billing enabled or your readers' selections become training data.
+
 The cap is enforced in code on both sides, and the server refuses an over-long
-request rather than trimming it. Every lookup is cached locally, so asking
+request rather than trimming it — 301 characters of context comes back `400`,
+verified against the live endpoint. Every lookup is cached locally, so asking
 twice never sends anything twice.
 
 ## Documentation
