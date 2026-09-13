@@ -123,7 +123,7 @@ export const api = onRequest(
             // EMPTY answer rather than a short one. Low thinking + generous
             // ceiling; a definition never comes close to spending it.
             maxOutputTokens: 800,
-            thinkingConfig: { thinkingLevel: 'low' },
+            thinkingConfig: { thinkingLevel: 'minimal' },
           },
         }),
       })
