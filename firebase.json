@@ -5,7 +5,7 @@
     "rewrites": [
       {
         "source": "/api/**",
-        "function": { "functionId": "api", "region": "us-central1" }
+        "function": { "functionId": "api", "region": "asia-south1" }
       },
       { "source": "**", "destination": "/index.html" }
     ],

@@ -57,7 +57,7 @@ function clientIp(forwarded: string | undefined, fallback: string | undefined): 
 
 export const api = onRequest(
   {
-    region: 'us-central1',
+    region: 'asia-south1',
     // Cost control, not capacity planning: this is what keeps a bug from
     // becoming a bill. Paired with a $1 budget alert on the project.
     maxInstances: 3,
