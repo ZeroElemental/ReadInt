@@ -19,7 +19,7 @@ import { defineSecret } from 'firebase-functions/params'
 
 const GEMINI_API_KEY = defineSecret('GEMINI_API_KEY')
 
-const MODEL = 'gemini-2.5-flash'
+const MODEL = 'gemini-3.6-flash'
 const ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`
 
 /** The privacy boundary, restated server-side. Must match the client's caps. */
@@ -118,7 +118,13 @@ export const api = onRequest(
         },
         body: JSON.stringify({
           contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { maxOutputTokens: 200, temperature: 0.2 },
+          generationConfig: {
+            // Thinking tokens count against this, so a tight cap returns an
+            // EMPTY answer rather than a short one. Low thinking + generous
+            // ceiling; a definition never comes close to spending it.
+            maxOutputTokens: 800,
+            thinkingConfig: { thinkingLevel: 'low' },
+          },
         }),
       })
 
@@ -129,9 +135,14 @@ export const api = onRequest(
       }
 
       const data = (await upstream.json()) as {
-        candidates?: { content?: { parts?: { text?: string }[] } }[]
+        candidates?: { content?: { parts?: { text?: string; thought?: boolean }[] } }[]
       }
-      const meaning = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim()
+      // A thinking model returns its reasoning in the same parts array, flagged
+      // `thought`. The answer is the first part that is not one, which is why
+      // this cannot just take parts[0].
+      const meaning = data.candidates?.[0]?.content?.parts
+        ?.find((part) => !part.thought && part.text?.trim())
+        ?.text?.trim()
 
       if (!meaning) {
         res.status(502).json({ error: 'no definition returned' })
