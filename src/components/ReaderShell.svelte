@@ -116,7 +116,9 @@
     const id = reader.docId
     if (!id) return
     const timer = setInterval(() => {
-      if (reader.dirty) void putDraft(id, annotationsSnapshot())
+      // Another tab owns this document's draft. Writing here would replace its
+      // row and lose whatever that tab had — see tablock.ts.
+      if (reader.dirty && !reader.otherTab) void putDraft(id, annotationsSnapshot())
     }, DRAFT_MS)
     return () => clearInterval(timer)
   })
@@ -153,15 +155,30 @@
 <div class="reader" class:rtl>
   <Toolbar onsave={save} onturn={turn} onsearch={() => (searchOpen = !searchOpen)} />
 
-  {#if reader.draft}
-    <div class="recover" role="status">
-      <span>
-        Unsaved marks from
-        {new Date(reader.draft.savedAt).toLocaleString()}
-        were recovered ({reader.draft.annotations.length}).
-      </span>
-      <button onclick={acceptDraft}>Restore them</button>
-      <button onclick={dismissDraft}>Discard</button>
+  <!-- One wrapper, so both notices share the grid's second row. Two separate
+       conditional children would let the content fall into an implicit fourth
+       row when both show — the same trap that collapsed the EPUB surface. -->
+  {#if reader.draft || reader.otherTab}
+    <div class="notices">
+      {#if reader.otherTab}
+        <div class="recover" role="status">
+          <span>
+            This document is open in another tab, which owns autosave. Save here with
+            Ctrl+S — unsaved marks in this tab are not backed up.
+          </span>
+        </div>
+      {/if}
+      {#if reader.draft}
+        <div class="recover" role="status">
+          <span>
+            Unsaved marks from
+            {new Date(reader.draft.savedAt).toLocaleString()}
+            were recovered ({reader.draft.annotations.length}).
+          </span>
+          <button onclick={acceptDraft}>Restore them</button>
+          <button onclick={dismissDraft}>Discard</button>
+        </div>
+      {/if}
     </div>
   {/if}
 

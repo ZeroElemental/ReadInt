@@ -19,6 +19,7 @@ import type {
 import { DEFAULT_SETTINGS } from './storage.ts'
 import type { DocAdapter } from '../adapters/types.ts'
 import type { OpenedDoc } from '../adapters/index.ts'
+import { lockDocument } from './tablock.ts'
 import type { EpubAdapter } from '../adapters/EpubAdapter.ts'
 
 export const reader = $state({
@@ -70,6 +71,13 @@ export const reader = $state({
    * whole point of an explicit save is that nothing appears without asking.
    */
   draft: null as { annotations: Annotation[]; savedAt: number } | null,
+
+  /**
+   * True when ANOTHER tab already has this document open. That tab owns
+   * autosave (see tablock.ts); this one still saves explicitly, but does not
+   * write drafts, so the two cannot overwrite each other's.
+   */
+  otherTab: false,
 
   /**
    * In-document search results, and which one the reader is on. Never
@@ -175,6 +183,9 @@ export function goToHit(index: number) {
 }
 
 /** Enter the reader. The adapter is already open; this just adopts it. */
+/** Gives the current document's tab lock back; set while one is held. */
+let releaseTabLock: (() => void) | null = null
+
 export function openDoc(
   rec: DocumentRecord,
   opened: OpenedDoc,
@@ -197,6 +208,20 @@ export function openDoc(
   reader.focusSide = 'left'
   reader.spreadStart = clampSpreadStart(rec.lastPageIndex)
   clearSearch()
+
+  // Asked for after the document is open rather than before: it never blocks
+  // reading, and the answer only changes whether autosave runs.
+  releaseTabLock?.()
+  reader.otherTab = false
+  void lockDocument(rec.id, undefined, () => {
+    // The other tab closed and this one was promoted: it owns autosave now.
+    if (reader.docId === rec.id) reader.otherTab = false
+  }).then((lock) => {
+    // The document may have been closed, or swapped, while the lock was pending.
+    if (reader.docId !== rec.id) return lock.release()
+    releaseTabLock = lock.release
+    reader.otherTab = !lock.held
+  })
 }
 
 /**
@@ -256,6 +281,9 @@ export function newAnnotation(
  * holds a worker and every rendered page it has cached.
  */
 export function closeDoc() {
+  releaseTabLock?.()
+  releaseTabLock = null
+  reader.otherTab = false
   reader.adapter?.destroy()
   reader.epub?.destroy()
   reader.adapter = null
