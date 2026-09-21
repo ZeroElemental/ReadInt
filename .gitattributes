@@ -1,0 +1,4 @@
+# The OCR core carries its wasm inlined as base64. Git normalises line endings
+# in a .js file by default, and a CR landing inside that payload corrupts it on
+# checkout. The model is already binary; this says so for both.
+public/tessdata/** -text
