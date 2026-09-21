@@ -6,14 +6,18 @@ follows their own cursor down the page the way a finger tracks a line. On top of
 that: highlighting, underlining, freehand ink, sticky notes, selection-to-
 definition, in-document search, and explicit save/restore of all markup.
 
-**PDFs and images are implemented; EPUB is not.** `EpubAdapter` still throws on
-open (Phase 6). Do not assume a feature works because its shape exists —
-`ROADMAP.md` says what is real.
+**Every format is implemented: PDF, scanned PDF, image, EPUB.** Do not assume a
+feature works because its shape exists — `ROADMAP.md` says what is real.
 
 A scanned PDF is not a fourth adapter. `PdfAdapter` notices a page with no text
 layer, rasterises it and reads it with tesseract, and the words come back as
 the same `TextItem` shape the native path produces. That is invariant 2, and it
 is why search and definitions work on a scan with no code of their own.
+
+**EPUB is the exception, and it is deliberate.** Reflowable text has no page
+geometry, so `EpubAdapter` does NOT implement `DocAdapter` and `ReaderShell`
+branches once on format for the viewport. Everything else — toolbar, save
+contract, search box, keyboard map — stays shared. See invariant 2.
 
 `/api/define` is deployed and live (`readint-6b7d2`, `asia-south1`). The model
 id in `functions/src/index.ts` is a **dependency with a support window, not a
@@ -52,10 +56,16 @@ These are load-bearing. Breaking one produces bugs that look like something else
    the only place conversion happens, and `coords.test.ts` guards it. If a
    highlight drifts on zoom, spread change, or a DPI change, the bug is here.
 
-2. **The shell never knows what it is reading.** Everything goes through
-   `DocAdapter` (`src/adapters/types.ts`). Scanned PDFs are *not* a fourth
-   adapter — `PdfAdapter` runs OCR and emits the same `TextItem` shape, so
-   nothing downstream branches on "is this OCR".
+2. **The shell never knows which PAGED format it is reading.** Everything
+   fixed-layout goes through `DocAdapter` (`src/adapters/types.ts`). Scanned
+   PDFs are *not* a fourth adapter — `PdfAdapter` runs OCR and emits the same
+   `TextItem` shape, so nothing downstream branches on "is this OCR".
+
+   Reflowable text is a different contract, not another implementation of this
+   one: there is no viewport, no raster and no page unit to have. `EpubAdapter`
+   therefore does not implement `DocAdapter`, and `ReaderShell` branches on
+   format exactly once, for the viewport. Narrowed in Phase 6 — the older
+   wording was only true because EPUB threw on open.
 
 3. **The 60fps paths never go through reactive state.** Cursor position,
    in-flight ink points, and magnifier crop rects are written straight to the
@@ -121,11 +131,12 @@ src/
     search.ts          runs -> one string -> folded -> hits -> quads (pure)
     ocr.ts             tesseract boxes -> TextItem[] in page units (pure)
     tesseract.ts       the OCR worker; dynamic-import ONLY, never static
+    epub-search.ts     section DOM -> string + offset map, back to a Range (pure)
   adapters/
     types.ts           DocAdapter interface + PageGeometry
     PdfAdapter.ts      pdf.js; also handles scanned PDFs via OCR
     ImageAdapter.ts    one image = a one-page document
-    EpubAdapter.ts     reflowable; CFI-based annotations, band magnifier only
+    EpubAdapter.ts     reflowable; epub.js, CFI annotations. NOT a DocAdapter
   components/
     ReaderShell.svelte spread geometry, focus side, page turns, input
     PageView.svelte    the six-layer stack for one page
@@ -133,7 +144,8 @@ src/
     AnnotationLayer.svelte  highlights, ink, notes, erase (layers 2/3/5)
     Magnifier.svelte   lens + band, one crop pipeline (layer 6)
     DefinitionPopup.svelte  dictionary -> AI fallback, cached
-    SearchPanel.svelte in-document search
+    SearchPanel.svelte in-document search, by page or by spine section
+    EpubView.svelte    the reflowable surface; epub.js owns the iframe
     Toolbar.svelte / Library.svelte
 functions/
     src/index.ts       POST /api/define — the only server, no framework

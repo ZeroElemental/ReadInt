@@ -6,29 +6,33 @@ it is the handoff between sessions.
 For the plan — every phase, what it covers, what is left — see `ROADMAP.md`.
 For the architecture and its invariants, see `AGENTS.md`.
 
-**Status:** Phases 0–5 complete and **deployed**. The app is live at
-<https://readint-6b7d2.web.app>, `/api/define` answers from `asia-south1`, and
-scanned PDFs and images are read by OCR in the browser. Phase 6 (EPUB) is the
-only phase left.
+**Status:** every phase is done. PDFs, scans, images and EPUB all read,
+annotate, search and define. Phases 0–5 are deployed; **Phase 6 is built and
+verified locally but not deployed yet**.
 **Last updated:** 2026-09-21
 
 ---
 
 ## Start here next session
 
-**Phase 6: EPUB.** Everything else is done and live.
+**Deploy Phase 6.** That is the only outstanding step; there is no Phase 7.
 
-It is genuinely a different problem, not more of the same: reflowable text has
-no fixed page geometry, so `Annotation.cfi` replaces quads and `PageGeometry`
-stops being meaningful. The lens magnifier goes with it — band only.
-`ROADMAP.md` has the checklist.
+```
+npm run build && firebase deploy --only hosting
+```
+
+After that the roadmap's phases are finished and what is left is the deferred
+backend work — accounts and sync, and the two issues filed on the way here:
+[#1](https://github.com/ZeroElemental/ReadInt/issues/1) for AI search over a
+document, [#2](https://github.com/ZeroElemental/ReadInt/issues/2) for the
+Gemini model id expiring behind a flat `502`.
 
 Standing checks, all green as of this commit:
 
 ```
-npm test      # 34 passing (27 + 7 for OCR)
+npm test      # 44 passing (34 + 10 for EPUB search)
 npm run check # 0 errors, 0 warnings
-npm run build # clean; pdf.js and tesseract each split into their own chunk
+npm run build # clean; pdf.js, tesseract and epub.js each split out
 cd functions && npx tsc --noEmit   # clean
 
 curl -s -X POST https://readint-6b7d2.web.app/api/define   -H 'content-type: application/json'   -d '{"term":"quad","sentence":"Each quad is stored in page units."}'
@@ -471,13 +475,134 @@ is the 1.8–2.2s measured in Phase 4, and a repeat is a cache hit.
 
 ---
 
-## Phase 6 and beyond
+## Phase 6 — EPUB ✅
 
-Moved to `ROADMAP.md` so the plan lives in one place and cannot drift out of
-sync with this log. It carries the checklist for EPUB (6), the deferred backend
-work, and the known limitations across every phase.
+- [x] `EpubAdapter` — rewritten around epub.js's `Book`; no longer a `DocAdapter`
+- [x] `EpubView.svelte` — the reflowable surface, chapter select and progress
+- [x] Highlight, underline, CFI-anchored notes, erase — drawn by epub.js
+- [x] `lib/epub-search.ts` — section DOM → string → CFI, with 10 cases
+- [x] In-document search and selection → definition, sharing search.ts
+- [x] Font size in place of the magnifier
+- [x] Position and a locations index, both cached per document
 
-Two pieces of deferred work now have issues rather than only prose:
-[#1](https://github.com/ZeroElemental/ReadInt/issues/1) for AI search over the
+**Invariant 2 narrowed, because a separate surface means the shell must know.**
+It now reads: *the shell never knows which **paged** format it is reading.*
+That is still load-bearing — it is what lets a scan and a digital PDF share
+every layer, which Phase 5 proved — but the old wording was only true because
+`EpubAdapter` threw on open. Reflowable text is a different contract, not
+another implementation of the same one, so `EpubAdapter` stops pretending to
+implement `DocAdapter` and `ReaderShell` branches once, on format, for the
+viewport only. The toolbar, the save contract, the search box and the keyboard
+map stay shared.
+
+**epub.js draws the marks; we only store them.** `rendition.annotations`
+reapplies a mark on every reflow, resize and section change for free. Building
+the PDF's marker look from `getRange(cfi).getClientRects()` would have meant
+owning repaint correctness forever, for a cosmetic gain.
+
+**Search reuses the pure half of `search.ts` and replaces only the geometry.**
+`findAll` was narrowed from `Flat` to a plain string — all it ever read — so
+folding, matching and `sentenceAround` now serve both formats. That last one
+matters most: `MAX_CONTEXT` is the privacy boundary in invariant 11, and two
+copies of it could drift apart. What EPUB supplies is the two ends: a section's
+DOM flattened to a string on the way in, and a DOM Range turned into a CFI on
+the way out.
+
+**Ink is disabled for EPUB.** A stroke is hundreds of points and reflowing text
+has no stable point to pin them to. Disabling the tool is honest; letting it
+make marks that drift on the next font change is not.
+
+### Verified in a real browser
+
+Against *Alice's Adventures in Wonderland* from Project Gutenberg — a real EPUB
+with a twelve-chapter TOC, not a synthetic fixture.
+
+- **The proof the phase rests on:** a highlight measured **dx 0, dy 0, dw 0**
+  against the words it marks at 16px, then at 24.96px, then at 12.8px. It
+  tracks the text through a reflow, with exactly one mark alive throughout. A
+  quad could not do that at all.
+- Opens, turns, and the TOC drives chapter jumps. Progress climbed 0 → 1 → 4 →
+  7% and the chapter readout followed: "Alice's Adventures in Wonderland" →
+  "CHAPTER I. Down the Rabbit-Hole".
+- A highlight saved, survived a hard reload, and came back on the same words —
+  the document reopening at the CFI it was left on.
+- Search for "Cheshire Cat" found **6 hits**, case-folded to "Cheshire cat" and
+  "Cheshire cats", and jumped from Chapter I to Chapter VI at 39%. No
+  search-side changes: the same `normalize` and `findAll` the PDF path uses.
+- **Invariant 11 re-proven on the new path.** A phrase lookup sent exactly one
+  request to `/api/define`, with body keys exactly `["sentence", "term"]` — no
+  section text, no document, no annotations — and 59 characters of real
+  surrounding sentence, cut by the same `sentenceAround` call the PDF path
+  makes.
+- Notes: a marker in the margin, text that survives closing and reopening the
+  editor, and erase removing it. Pen shows disabled with "Not available in
+  EPUB".
+- A native PDF, a scan and the EPUB were opened in one session afterwards: 1/4
+  pages with 32 spans, 1/1 with 31 OCR spans, and the reflowable surface with
+  no leaves. The paged path is untouched.
+
+### Six things the browser caught
+
+1. **The surface had no height.** `ReaderShell`'s grid is `auto auto 1fr` and
+   the draft-recovery banner is conditional, so without it the viewport
+   auto-placed into the second `auto` row. A page of leaves has intrinsic
+   height and never noticed; a rendition told to fill its parent collapsed to
+   zero. Pinned to `grid-row: 3` rather than left depending on how many
+   siblings happen to be above it.
+2. **Marks went stale on a font change.** epub.js repaints its pane when the
+   VIEW resizes, but a font-size change reflows inside a view of exactly the
+   same size. Measured: after two zoom steps a highlight sat 656px left and
+   39px above its words, at the old width. `relocated` fires while the columns
+   are still settling, and the iframe's box never changes size — only its
+   scroll width — so a `ResizeObserver` saw nothing either. Removing and
+   re-adding the marks on a short timer after the change is what fixed it, and
+   the timer is commented as the ceiling it is.
+3. **`Section.load()` does not resolve to a Document.** Its typing says so; it
+   actually hands back `documentElement`, an Element with no `createRange`.
+   Every section containing a hit threw.
+4. **A note's marker was invisible.** epub.js creates the `<a>` with the
+   iframe's document but appends it to the view's wrapper in OURS, so a theme
+   rule injected into the iframe never reaches it. It needs our stylesheet, and
+   `:global`, because the element carries none of Svelte's scoping attributes.
+5. **A note's text came back empty.** The click handler closed over the plain
+   object `newAnnotation` returned, while every edit went to the deep proxy
+   Svelte put in the store. The Phase 3 lesson from the other direction: read
+   the live annotation by id, never the one the closure captured.
+6. **A null viewport crashed the erase layer** — pre-existing, and exposed by
+   switching documents with Erase still selected. That layer renders outside
+   `AnnotationLayer`'s `{#if vp}` guard, so `box()` dereferenced null. Fixed at
+   `targets`, where every erase box routes through, which also drops a mark
+   with no page geometry at all — an EPUB annotation on a paged view.
+
+### Known limitations
+
+- **Position is per document, not per device.** `lastCfi` and the locations
+  index live in Dexie like everything else.
+- **The locations index is generated on first open**, which parses every
+  section. Alice is 11KB of index and finishes quickly; a long book will show
+  the "Indexing this book…" line for longer.
+- **Search loads every section on the first pass.** Sections are unloaded as
+  the scan moves on, so it costs time rather than memory, and there is no
+  per-section cache the way `pageText` caches a page.
+- **The mark redraw is on a 350ms timer**, because epub.js has no "reflow
+  finished" signal. On a slow machine a redraw could land early; the number is
+  named in `EpubView` for exactly that reason.
+- **One marker style for every note**, rather than the note's own colour. The
+  marker is positioned by epub.js and styled by a single rule; per-note colour
+  would mean reaching into its element after each render.
+- **No spread toggle, magnifier or reading-direction effect** on EPUB: epub.js
+  decides its own column count from the width, and an iframe cannot be
+  rasterised to a canvas.
+
+---
+
+## Beyond the phases
+
+`ROADMAP.md` carries what is left: the deferred backend work — accounts and
+sync, the AI study layer, export, analytics — and the known limitations of
+every phase in one place.
+
+Two pieces of it have issues rather than only prose:
+[#1](https://github.com/ZeroElemental/ReadInt/issues/1) for AI search over a
 document, and [#2](https://github.com/ZeroElemental/ReadInt/issues/2) for the
 Gemini model id expiring behind a flat `502`.

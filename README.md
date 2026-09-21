@@ -22,16 +22,21 @@ trigger yourself.
 | Definitions — single words (dictionary) | ✅ Working |
 | Definitions — phrases (AI fallback) | ✅ Working — [deployed](DEPLOY.md) |
 | **Images** (PNG/JPG) + OCR for scanned PDFs | ✅ Working |
-| **EPUB** | ⬜ Not built — Phase 6 |
-
-Dropping an EPUB today fails with `EpubAdapter.open not implemented`. The file
-type is recognised; the adapter behind it is still a stub.
+| **EPUB** | ✅ Working |
 
 A scanned PDF or a photo of a page is read by OCR in the browser, and the words
 come back in the same shape the PDF text layer would have produced — so
 selection, highlighting, search and definitions all work on a scan with no
 separate code path. English only, and the first page of a document takes a few
 seconds.
+
+An EPUB reflows rather than paginating, so it gets its own surface: epub.js's
+two columns, a chapter menu and a progress percentage. Marks there are anchored
+to the text itself (a CFI) rather than to coordinates, which is what lets a
+highlight stay on the same words after you change the font size. Zoom changes
+that font size, because magnifying reflowing text is not a thing an e-reader
+does. Freehand ink is the one tool EPUB does not get — a stroke has nowhere
+stable to live when the text moves.
 
 A live deployment runs at <https://readint-6b7d2.web.app>. Running your own is
 a fifteen-minute job — [DEPLOY.md](DEPLOY.md) has the checklist. Without one the

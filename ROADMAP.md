@@ -4,10 +4,10 @@ Every phase, what it covers, what is done, and what is left. `PROGRESS.md` is
 the working checklist you tick as you go; this is the map you read first when
 picking the work back up.
 
-**Where things stand:** Phases 0–5 are done and deployed. The app is live at
-<https://readint-6b7d2.web.app>, with `/api/define` answering from
-`asia-south1` and OCR reading scans in the browser. **Phase 6 is next, and it
-is the last one.**
+**Where things stand:** every phase is done. Phases 0–5 are deployed and live
+at <https://readint-6b7d2.web.app>; **Phase 6 is built and verified but not
+deployed yet**. What remains after that is the deferred backend work, which was
+never scoped as a phase.
 
 | Phase | Covers | State |
 |---|---|---|
@@ -17,7 +17,7 @@ is the last one.**
 | 3 | Annotations + explicit save | ✅ Done |
 | 4 | Definitions, in-document search, first deploy | ✅ Done |
 | 5 | OCR for scanned PDFs and images | ✅ Done |
-| 6 | EPUB | ⬜ **Next** |
+| 6 | EPUB | ✅ Done |
 | — | Deferred: sync, AI study layer, export, analytics | ⬜ Needs a backend |
 
 The order is deliberate. Each phase depends on the one before it being *proven*,
@@ -162,19 +162,31 @@ against itself.
 
 ---
 
-## Phase 6 — EPUB ⬜ **Next**
+## Phase 6 — EPUB ✅
 
-- [ ] `EpubAdapter` — epub.js paginated + spread
-- [ ] CFI-based annotations (`Annotation.cfi`)
-- [ ] Band magnifier only; lens disabled for reflowable text
-- [ ] Chapter navigation
+- [x] `EpubAdapter` — epub.js paginated, its own spread, NOT a `DocAdapter`
+- [x] CFI-based annotations: highlight, underline, notes, erase
+- [x] Chapter navigation, progress percentage, position memory
+- [x] In-document search and selection → definition
+- [x] Font size in place of the magnifier
 
-**Verify:** highlight, reopen, highlight restored via CFI.
+**Three deviations from what this file asked for**, all recorded in
+`PROGRESS.md` with the reasoning:
 
-**Notes.** Genuinely a different shape of problem, which is why it is last:
-reflowable text has no fixed page geometry, so `Annotation.cfi` replaces quads
-and `PageGeometry` is not meaningful. Staged here so a slip cannot block the PDF
-experience.
+1. **Invariant 2 narrowed** to *the shell never knows which PAGED format it is
+   reading*. A separate surface means the shell must know, and the old wording
+   was only true because `EpubAdapter` threw on open.
+2. **No band magnifier.** An iframe cannot be rasterised to a canvas, so the
+   1:1 blit has nothing to blit. Zoom drives `themes.fontSize` instead, which
+   is what an e-reader does.
+3. **No ink.** A stroke has no stable point to pin to in reflowing text, so the
+   tool is disabled rather than allowed to drift.
+
+**Proven by:** a highlight measured dx 0, dy 0, dw 0 against its words at 16px,
+24.96px and 12.8px — tracking the text through a reflow, which is the thing a
+quad cannot do. Plus a 6-hit case-folded search across chapters, a reload that
+restored both the mark and the reading position, and a definition request whose
+body was exactly `{term, sentence}`.
 
 ---
 
@@ -196,12 +208,11 @@ in place for it.
 
 ## Known limitations
 
-- **EPUB does not open.** `detectFormat` recognises it, but `EpubAdapter` is
-  still a stub that throws, so dropping one surfaces
-  `EpubAdapter.open not implemented` in the library. Phase 6. PDFs and images
-  both work.
 - **OCR is English-only, needs SIMD, and reads one page at a time.** The full
   list, with the reasoning for each, is in `PROGRESS.md` under Phase 5.
+- **EPUB generates a locations index on first open**, searches by loading every
+  section, and redraws its marks on a timer after a font change because epub.js
+  offers no "reflow finished" signal. Full list under Phase 6.
 - **Two tabs on one document share a `drafts` row** and overwrite each other's
   autosave. Out of scope while the app is single-device; wants a tab lock or a
   per-tab draft id when sync arrives.
