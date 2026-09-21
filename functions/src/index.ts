@@ -16,11 +16,9 @@
 
 import { onRequest } from 'firebase-functions/v2/https'
 import { defineSecret } from 'firebase-functions/params'
+import { defineTerm } from './gemini.js'
 
 const GEMINI_API_KEY = defineSecret('GEMINI_API_KEY')
-
-const MODEL = 'gemini-3.6-flash'
-const ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`
 
 /** The privacy boundary, restated server-side. Must match the client's caps. */
 const MAX_TERM = 120
@@ -110,46 +108,22 @@ export const api = onRequest(
     ].join('\n')
 
     try {
-      const upstream = await fetch(ENDPOINT, {
-        method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          'x-goog-api-key': GEMINI_API_KEY.value(),
-        },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: {
-            // Thinking tokens count against this, so a tight cap returns an
-            // EMPTY answer rather than a short one. Low thinking + generous
-            // ceiling; a definition never comes close to spending it.
-            maxOutputTokens: 800,
-            thinkingConfig: { thinkingLevel: 'minimal' },
-          },
-        }),
-      })
+      const out = await defineTerm(prompt, GEMINI_API_KEY.value())
 
-      if (!upstream.ok) {
-        console.error('gemini rejected the request', upstream.status, await upstream.text())
-        res.status(502).json({ error: 'upstream failed' })
+      if (!out.ok) {
+        console.error('gemini rejected the request', out.model, out.upstream)
+        // The status and Google's own reason go back with the 502. A retired
+        // model used to be a bare "upstream failed" whose real cause lived only
+        // in the function logs; now the person reading the network tab sees it.
+        const empty = out.upstream.reason === 'no definition returned'
+        res.status(502).json({
+          error: empty ? 'no definition returned' : 'upstream failed',
+          upstream: out.upstream,
+        })
         return
       }
 
-      const data = (await upstream.json()) as {
-        candidates?: { content?: { parts?: { text?: string; thought?: boolean }[] } }[]
-      }
-      // A thinking model returns its reasoning in the same parts array, flagged
-      // `thought`. The answer is the first part that is not one, which is why
-      // this cannot just take parts[0].
-      const meaning = data.candidates?.[0]?.content?.parts
-        ?.find((part) => !part.thought && part.text?.trim())
-        ?.text?.trim()
-
-      if (!meaning) {
-        res.status(502).json({ error: 'no definition returned' })
-        return
-      }
-
-      res.json({ meaning })
+      res.json({ meaning: out.meaning })
     } catch (err) {
       console.error('define failed', err)
       res.status(502).json({ error: 'upstream failed' })

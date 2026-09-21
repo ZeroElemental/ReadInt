@@ -259,6 +259,10 @@
       const data = await res.json()
       if (res.ok && data?.meaning) return { meaning: data.meaning, source: 'ai' }
       if (res.ok) return null
+      // The card says only "not available"; the cause — a retired model id, a
+      // quota, a bad field — travels back in `upstream` and belongs in the
+      // console, where the person who can act on it will look.
+      console.warn('definition service failed', res.status, data?.upstream ?? data)
     } catch (err) {
       if ((err as Error)?.name === 'AbortError') throw err
     }
