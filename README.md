@@ -18,6 +18,7 @@ trigger yourself.
 | Magnifier — lens and line band | ✅ Working |
 | Highlight, underline, ink, notes, erase | ✅ Working |
 | Explicit save, draft recovery | ✅ Working |
+| Export — your marks as Markdown, or the PDF with them drawn on | ✅ Working |
 | In-document search | ✅ Working |
 | Definitions — single words (dictionary) | ✅ Working |
 | Definitions — phrases (AI fallback) | ✅ Working — [deployed](DEPLOY.md) |

@@ -4,9 +4,10 @@ Every phase, what it covers, what is done, and what is left. `PROGRESS.md` is
 the working checklist you tick as you go; this is the map you read first when
 picking the work back up.
 
-**Where things stand:** every phase is done, pushed and deployed at
-<https://readint-6b7d2.web.app>. Phase 7 is three of four; what remains after
-that is export, then the deferred backend work.
+**Where things stand:** every phase is done. Phases 0–7 are pushed and deployed at
+<https://readint-6b7d2.web.app>; **Phase 8 (export) is built and verified but not
+pushed or deployed yet**. Phase 7 is three of four. What remains is the deferred
+backend work.
 
 | Phase | Covers | State |
 |---|---|---|
@@ -18,7 +19,8 @@ that is export, then the deferred backend work.
 | 5 | OCR for scanned PDFs and images | ✅ Done |
 | 6 | EPUB | ✅ Done |
 | 7 | Release hardening | ◐ 3 of 4 built — the rate limit waits on a Firestore decision |
-| — | Deferred: sync, AI study layer, export, analytics | ⬜ Needs a backend |
+| 8 | Export: Markdown of marks, annotated PDF | ✅ Done |
+| — | Deferred: sync, AI study layer, analytics | ⬜ Needs a backend |
 
 The order is deliberate. Each phase depends on the one before it being *proven*,
 not merely written — Phase 1 gates everything because a coordinate bug there
@@ -217,6 +219,27 @@ second's underline, and closing the owner cleared the other's notice.
 
 ---
 
+## Phase 8 — Export ✅
+
+- [x] **Marks as Markdown**, for every format: the text under each highlight,
+      underline and note, grouped by page or chapter, in reading order
+- [x] **The original PDF with the marks drawn on it**, keeping its text layer
+- [ ] Anki TSV — scoped out at the start; not built
+
+**One decision, taken before any code:** a flattened PDF either throws away the
+text layer (rasterise and re-wrap; no new dependency) or needs a PDF writer. It
+uses `pdf-lib`, the first dependency added since the initial commit, reached only
+through `await import()`. An export you cannot search or select is a poor thing to
+send to anyone.
+
+**Proven by:** rendering the export through the app's own PDF adapter and
+comparing pixels with the original — a highlight of `[255,243,194]` where 40%
+`#ffe066` multiplied over white predicts 242.6/193.8, an underline in the ink
+colour, a note in exactly its own `#fff8c4`, 16 text runs before and after, and a
+stroke with 8,714 changed pixels where it was drawn and none at its mirror image.
+
+---
+
 ## Deferred — needs a real backend
 
 Not scoped. Recorded so the architecture stays ready: stable annotation ids and
@@ -228,7 +251,6 @@ in place for it.
   — brute-force cosine over Firestore-stored embeddings stays free for a single
   document; a vector store is only needed for library-wide semantic search
 - Server OCR (Cloud Vision) and page tiling for 500MB+ scans
-- Export: flattened annotated PDF, notes to Markdown/Anki
 - Reading analytics + spaced repetition on highlights
 
 ---

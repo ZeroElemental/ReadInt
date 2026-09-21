@@ -6,36 +6,40 @@ it is the handoff between sessions.
 For the plan — every phase, what it covers, what is left — see `ROADMAP.md`.
 For the architecture and its invariants, see `AGENTS.md`.
 
-**Status:** every roadmap phase is done and **deployed**, and pushed to GitHub. Phase
-7 (release hardening) is three of four; its last item, the rate limit, is held
-for a Firestore decision. Phase 8 (export) is next.
+**Status:** every roadmap phase is done. Phases 0–7's work is pushed and deployed
+except **Phase 8 (export), which is built and verified locally but not pushed or
+deployed**. Phase 7 is three of four; its last item, the rate limit, is held for a
+Firestore decision.
 **Last updated:** 2026-09-21
 
 ---
 
 ## Start here next session
 
-**Phase 8: export.** Everything before it is live: `origin/main` and the site
-are both at `cd83af9`, and the function was redeployed with the Gemini fix.
+**Push and deploy Phase 8**, then choose between sync and the smaller loose ends.
 
-The live checks that were run, so they need not be run again: the served bundle
-matches the local build; `/api/define` answers in 2.4 s with its guards intact
-(400, 400, 405); and an EPUB uploaded to the production URL held a highlight at
-dx 0, dy 0, dw 0 across font sizes of 16, 24.96 and 12.8 px.
+```
+git push origin main
+npm run build && firebase deploy --only hosting     # the function is untouched
+```
 
-**Phase 8 has one decision in it before any code:** a flattened annotated PDF
-either destroys the text layer (image-only, no new dependency) or needs a PDF
-writer such as `pdf-lib`, which would be the first dependency added since the
-initial commit. The Markdown and Anki-TSV exports do not depend on it.
+Then a decision, not a task: **Phase 9 (accounts and sync) needs its own
+brainstorm** — it is not an increment on what exists, and it is the first real
+backend. The smaller loose ends, in the order they are worth doing:
 
-Two things are deliberately still open: issue #2 stays open until the fallback
-model has actually run against the project's key, and the rate limit is still an
-in-memory `Map` (see Phase 7).
+- **`epubjs` carries a high-severity `@xmldom/xmldom` advisory** (fifteen of them:
+  XML-serialisation injection and quadratic-time parsing). It reaches the app by
+  parsing an EPUB the reader chose to open, so it is a self-inflicted hang at
+  worst — nothing server-side ever sees the file — but it is real. The only fix
+  is `epubjs` 0.4.2, a semver-major bump that would need Phase 6 re-verified.
+- The rate limit is still an in-memory `Map` (Phase 7).
+- Issue #2 stays open until the Gemini fallback has actually run.
+- Anki TSV was scoped out of Phase 8 and is not built.
 
 Standing checks, all green as of this commit:
 
 ```
-npm test      # 52 passing (44 + 8 for the tab lock)
+npm test      # 75 passing (52 + 23 for export)
 cd functions && npm test   # 7 passing, on Node 24
 npm run check # 0 errors, 0 warnings
 npm run build # clean; pdf.js, tesseract and epub.js each split out
@@ -676,6 +680,91 @@ claiming another tab owned autosave long after there was no other tab.
 - **Without Web Locks** (an old browser, a non-secure context) two tabs can
   still overwrite each other's draft. Losing the guard was judged better than
   refusing to autosave.
+
+---
+
+## Phase 8 — Export ✅
+
+- [x] `lib/export.ts` — the text under a mark, and the marks as Markdown (pure)
+- [x] `lib/export-pdf.ts` — the original PDF with the marks drawn on it
+- [x] `lib/exporter.ts` — the end-to-end run, for a PDF and for an EPUB
+- [x] `ExportMenu.svelte` — in the toolbar, keyboard-operable
+- [ ] Anki TSV — scoped out; the two exports above were the ones chosen
+
+**The PDF keeps its text, and that was a decision, not a default.** The
+no-dependency route was to rasterise each page and wrap the images, which throws
+the text layer away: an export you cannot search or select. So the file is LOADED
+and MODIFIED with `pdf-lib`, the first dependency added since the initial commit,
+reached only through `await import()` — it is its own 420 kB chunk and the entry
+bundle contains none of its internals. A scan keeps exactly what it had, which is
+pixels.
+
+**No coordinate conversion, and that is not luck.** Marks are stored in page
+units — PDF user space, origin bottom-left, y up (invariant 1) — which is
+precisely the space pdf-lib draws in. The rule that lets a highlight survive a
+zoom is the same one that puts it on the right glyphs in a different reader. Ink is
+the one exception: `drawSvgPath` expects SVG space and flips it back, so our
+coordinates as stored would mirror every stroke. `flipPath` negates the y's.
+
+**Extracting the text under a highlight is the hard part, and it is approximate.**
+It reuses `flattenPage`, so a hyphenated word is whole again and a run split
+mid-word gets no space it does not have. Each character is placed proportionally
+along its run and kept if its centre is inside a quad — the same approximation
+search makes, for the same reason: `TextItem` carries a run's width, not per-glyph
+advances. The mark's edges came from the browser's real glyph widths, so a boundary
+can land a character or two off, and a cut word is what a reader would see. So
+each edge is snapped to a word by **majority**: a word the range covers more than
+half of is taken whole, one it merely brushes is dropped. A five-letter word the
+reader really marked is covered at least 60% however the edge drifts; one the edge
+touched, 40% at most.
+
+### Verified
+
+- **23 tests** across the two modules. The text extraction covers a partial run,
+  an edge drifting into the next word (kept out) and short of its own (taken
+  whole), a mark inside one word, a hyphenated word across a line break, another
+  line, and empty input. A range that is only whitespace was caught by a test
+  quoting a neighbour it never touched — the code was wrong, not the test.
+- **The exported PDF still has its text**, asserted by opening the EXPORT in a
+  real PDF reader and asking for the words. An earlier draft of that test claimed
+  it and asserted only the `%PDF-` header; the streams are compressed, so a
+  string search of the raw bytes could never have proven it.
+- **Pixels, in a real browser, against the original rendered the same way.**
+  The export and the original went through the app's own `PdfAdapter` at the same
+  scale and were compared at the marks:
+  - highlight `[255,255,255]` → `[255,243,194]`. Multiplying `#ffe066` at 40%
+    opacity over white predicts 242.6 and 193.8;
+  - underline `[255,255,255]` → `[31,41,51]`, which is the ink colour `#1f2933`;
+  - note `[255,255,255]` → `[255,248,196]`, exactly the note's `#fff8c4`;
+  - text layer: **16 runs in the export, 16 in the original**, and "ANCHOR" still
+    selectable;
+  - ink: **8,714 pixels changed inside the stroke's bounding box, 0 at the
+    mirrored position** — the y-flip is right, checked against the raster rather
+    than against itself.
+- **Markdown on a PDF** gave the right text for the highlight and the underline,
+  in top-to-bottom order, with the underline flagged and the drawing counted.
+- **Markdown on an EPUB** grouped the marks under their chapter, took the text from
+  the CFI ranges, and put the note under the quotation it answers; ordering came
+  from epub.js's own CFI comparator.
+- **The menu:** opening it focuses the first item, Escape closes it, Annotated PDF
+  is disabled with an explanation on an EPUB, and the result appears in a status
+  region and clears itself after six seconds.
+
+### Known limitations
+
+- **The marks are drawn, not embedded as PDF annotation objects.** They cannot be
+  edited or removed in another reader; they are part of the page. That is what
+  "flattened" means, and it is the right trade for something you send to someone.
+- **A note's text is Latin-only.** A standard font throws on anything outside
+  WinAnsi, so other scripts come out as `?` one character at a time — the note
+  survives, the glyph does not. Embedding a real font would fix it and cost the
+  file a few hundred kilobytes.
+- **No PDF export for an EPUB or an image**, only Markdown: there is no original
+  PDF to draw on. The menu says so rather than hiding the option.
+- **Drawings are counted, not exported, in Markdown.** A stroke has no text form.
+- **An encrypted PDF fails**, with pdf-lib's message shown to the reader.
+- **The marked text is a good approximation, not a guarantee.** See above; a
+  highlight over a line in a heavily mixed-width font is where it will show.
 
 ---
 

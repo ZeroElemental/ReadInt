@@ -138,6 +138,9 @@ src/
     tesseract.ts       the OCR worker; dynamic-import ONLY, never static
     epub-search.ts     section DOM -> string + offset map, back to a Range (pure)
     tablock.ts         one autosaving tab per document, by Web Lock
+    export.ts          text under a mark + marks -> Markdown (pure)
+    export-pdf.ts      marks drawn onto the ORIGINAL PDF; pdf-lib, dynamic-import ONLY
+    exporter.ts        the end-to-end run; the only file that knows PDF vs EPUB marks
   adapters/
     types.ts           DocAdapter interface + PageGeometry
     PdfAdapter.ts      pdf.js; also handles scanned PDFs via OCR
@@ -165,7 +168,9 @@ stays in its own chunk, and a single static import anywhere pulls 5MB back into
 the entry bundle — which is why OCR progress lives in the store rather than
 beside the worker. The build says so out loud if this is broken
 (`INEFFECTIVE_DYNAMIC_IMPORT`). The same rule, for the same reason, is why
-`PdfAdapter` reaches pdf.js only through `await import()`.
+`PdfAdapter` reaches pdf.js only through `await import()`, `EpubAdapter` reaches
+epub.js the same way, and `exporter.ts` reaches `export-pdf.ts` — and through it
+pdf-lib, half a megabyte nobody pays for until they click Export — the same way.
 
 ## Commands
 
