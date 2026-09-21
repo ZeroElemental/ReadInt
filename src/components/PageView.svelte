@@ -190,12 +190,33 @@
     ></div>
   {/if}
 
+  {#if reader.ocr.pageIndex === pageIndex}
+    <!-- Deliberately NOT scaled by --z: this is chrome about the page, not
+         something printed on it, and it has to stay readable at 48% zoom. -->
+    <div class="ocr" role="status">
+      Reading this page… {Math.round(reader.ocr.progress * 100)}%
+    </div>
+  {/if}
+
   {#if magnifying}
     <Magnifier bind:this={magnifier} {pageIndex} {vp} />
   {/if}
 </div>
 
 <style>
+  .ocr {
+    position: absolute;
+    top: 8px;
+    left: 8px;
+    z-index: 6;
+    padding: 4px 10px;
+    border-radius: 999px;
+    background: rgba(31, 41, 51, 0.85);
+    color: #fff;
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+    pointer-events: none;
+  }
   .page {
     position: relative;
     /* Sized from the page's own geometry, so the leaf never flashes at the

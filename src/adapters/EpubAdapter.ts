@@ -11,8 +11,7 @@
  * STATUS: skeleton — Phase 6.
  */
 
-import type { DocAdapter, PageGeometry } from './types.ts'
-import type { TextItem } from '../lib/types.ts'
+import type { DocAdapter, PageGeometry, TextItemsResult } from './types.ts'
 
 export class EpubAdapter implements DocAdapter {
   readonly pageCount = 0
@@ -34,7 +33,7 @@ export class EpubAdapter implements DocAdapter {
     // No-op by design: epub.js owns its own iframe rendering.
   }
 
-  async getTextItems(_pageIndex: number): Promise<TextItem[]> {
+  async getTextItems(_pageIndex: number): Promise<TextItemsResult> {
     // TODO(phase-6): walk the rendered iframe's text nodes for line boxes.
     throw new Error('EpubAdapter.getTextItems not implemented')
   }

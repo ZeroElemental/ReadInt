@@ -6,8 +6,13 @@
  * search and definitions never branch on "is this OCR".
  */
 
-import type { TextItem } from '../lib/types.ts'
+import type { PageTextRecord, TextItem } from '../lib/types.ts'
 import type { ViewportLike } from '../lib/coords.ts'
+
+export interface TextItemsResult {
+  items: TextItem[]
+  source: PageTextRecord['source']
+}
 
 /**
  * A page's transform at scale 1, plus its CSS-pixel size at that scale.
@@ -45,8 +50,14 @@ export interface DocAdapter {
     scale: number,
   ): Promise<void>
 
-  /** Positioned text for selection, search and the band magnifier. */
-  getTextItems(pageIndex: number): Promise<TextItem[]>
+  /**
+   * Positioned text for selection, search and the band magnifier.
+   *
+   * `source` is bookkeeping, not a branch: it is what `pageText` stores and
+   * what marks a document as OCR'd. Nothing above the adapter may read it to
+   * decide how to behave — that is invariant 2.
+   */
+  getTextItems(pageIndex: number): Promise<TextItemsResult>
 
   /** Release pdf.js / epub.js handles. */
   destroy(): void

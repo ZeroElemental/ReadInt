@@ -9,12 +9,19 @@
  */
 
 import type { PDFDocumentProxy, PDFPageProxy } from 'pdfjs-dist'
-import type { DocAdapter, PageGeometry } from './types.ts'
+import type { DocAdapter, PageGeometry, TextItemsResult } from './types.ts'
 import type { Quad, TextItem } from '../lib/types.ts'
 import { groupByLine } from '../lib/coords.ts'
 
 /** Below this many characters, a page is almost certainly a scan. */
 const SCANNED_CHAR_THRESHOLD = 20
+
+/**
+ * Raster resolution for OCR, as a multiple of page units. Page units are
+ * 1/72in, so 3 is 216dpi — tesseract wants 150-300 and the cost is quadratic,
+ * so this is the knob to turn if accuracy on real scans disappoints.
+ */
+const OCR_SCALE = 3
 
 type RenderTask = ReturnType<PDFPageProxy['render']>
 
@@ -133,7 +140,7 @@ export class PdfAdapter implements DocAdapter {
     }
   }
 
-  async getTextItems(pageIndex: number): Promise<TextItem[]> {
+  async getTextItems(pageIndex: number): Promise<TextItemsResult> {
     const page = await this.page(pageIndex)
     const { items } = await page.getTextContent()
 
@@ -144,19 +151,53 @@ export class PdfAdapter implements DocAdapter {
         'str' in it && it.str !== '',
     )
 
-    // TODO(phase-5): if the page's total character count is below
-    // SCANNED_CHAR_THRESHOLD, hand off to the OCR worker and return its boxes
-    // in this same shape — nothing downstream may learn which path ran.
-    void SCANNED_CHAR_THRESHOLD
+    // A scan carries a page image and, at most, a stray label or a watermark.
+    // Below the threshold there is nothing to select, so read the pixels
+    // instead and return the result in this same shape — nothing downstream
+    // may learn which path ran.
+    const chars = runs.reduce((n, it) => n + it.str.trim().length, 0)
+    if (chars < SCANNED_CHAR_THRESHOLD) {
+      return { items: await this.ocrPage(pageIndex), source: 'ocr' }
+    }
 
     const quads = runs.map((it) => textItemQuad(it.transform, it.width, it.height))
     const lineIds = groupByLine(quads)
 
-    return runs.map((it, i) => ({
-      str: it.str,
-      quad: quads[i],
-      lineId: lineIds[i],
-    }))
+    return {
+      items: runs.map((it, i) => ({
+        str: it.str,
+        quad: quads[i],
+        lineId: lineIds[i],
+      })),
+      source: 'native',
+    }
+  }
+
+  /**
+   * Rasterise a page and read it.
+   *
+   * The scale handed to the OCR module is MEASURED off the canvas rather than
+   * assumed to be OCR_SCALE: renderPage multiplies by devicePixelRatio and
+   * rounds, and a conversion that re-derives that arithmetic instead of
+   * reading the result is one refactor away from putting every word in the
+   * wrong place.
+   */
+  private async ocrPage(pageIndex: number): Promise<TextItem[]> {
+    const [{ recognise }, vp] = await Promise.all([
+      import('../lib/tesseract.ts'),
+      this.getViewport(pageIndex),
+    ])
+
+    const canvas = document.createElement('canvas')
+    try {
+      await this.renderPage(pageIndex, canvas, OCR_SCALE)
+      return await recognise(canvas, canvas.width / vp.width, vp, pageIndex)
+    } finally {
+      // A 216dpi A4 page is ~25MB of backing store. Release it now rather than
+      // leaving it to GC — the same reason the magnifier zeroes its canvas.
+      canvas.width = 0
+      canvas.height = 0
+    }
   }
 
   destroy(): void {

@@ -63,6 +63,16 @@ export const reader = $state({
   hits: [] as SearchHit[],
   activeHit: -1,
 
+  /**
+   * The page OCR is reading, and how far along. `pageIndex` is -1 when idle.
+   *
+   * Reactive state is right here despite invariant 3: tesseract's logger fires
+   * a handful of times per page, not per frame. It lives in the store rather
+   * than beside the worker so that lib/tesseract.ts — and the 5MB dependency
+   * behind it — stays reachable ONLY through a dynamic import.
+   */
+  ocr: { pageIndex: -1, progress: 0 },
+
   settings: { ...DEFAULT_SETTINGS } as Settings,
 })
 
