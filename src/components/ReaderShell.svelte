@@ -148,6 +148,9 @@
       save,
       turn,
       search: () => (searchOpen = true),
+      // Which document owns the selection depends on the format: a PDF's is in
+      // this document, an EPUB's is inside epub.js's iframe.
+      define: () => (reflowable ? epubView?.defineSelection() : popup?.defineSelection()),
       escape: () => (searchOpen = false),
     })}
 />
@@ -185,7 +188,8 @@
   {#if reflowable}
     <EpubView
       bind:this={epubView}
-      ondefine={(term, rect, text, section) => popup?.showAt(term, rect, text, section)}
+      ondefine={(term, rect, text, section, focus) =>
+        popup?.showAt(term, rect, text, section, focus)}
     />
   {:else}
     <div bind:this={book} class="book" data-turning={turning}>

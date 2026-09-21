@@ -17,6 +17,8 @@ const TOOL_KEYS: Record<string, Tool> = {
 export interface KeyHandlers {
   save: () => void
   search: () => void
+  /** Define the current selection — the keyboard route into the popup. */
+  define: () => void
   escape: () => void
   /** Not turnPage directly: the shell owns the turn so it can animate it. */
   turn: (delta: number) => void
@@ -65,6 +67,7 @@ export function handleKey(ev: KeyboardEvent, on: KeyHandlers): void {
 
   const key = ev.key.toLowerCase()
 
+  if (key === 'd') return on.define()
   if (key === 'f') {
     reader.focusSide = reader.focusSide === 'left' ? 'right' : 'left'
     return

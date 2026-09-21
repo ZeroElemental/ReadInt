@@ -39,6 +39,7 @@
       rect: DOMRect,
       sectionText: string,
       sectionIndex: number,
+      focus: boolean,
     ) => void
   }
   let { ondefine }: Props = $props()
@@ -57,6 +58,15 @@
    * marker in the prose, and opens in a popover keyed to that marker.
    */
   let editing = $state<{ id: string; text: string; x: number; y: number } | null>(null)
+  let noteBox = $state<HTMLTextAreaElement | null>(null)
+
+  // Focus follows the editor. It opens in response to a selection made inside
+  // the iframe, so focus is left on <body>: a keyboard or screen-reader user
+  // would have no way to know a dialog appeared, let alone reach it. Keyed on
+  // the note's id so it fires when an editor OPENS, not on every keystroke.
+  $effect(() => {
+    if (editing?.id) noteBox?.focus()
+  })
 
   const epub = $derived(reader.epub)
 
@@ -257,7 +267,11 @@
    * sentence — the 300-character cap stays that component's, because it is the
    * only thing in the app that talks off-device.
    */
-  async function define(cfiRange: string, contents: { window: Window }) {
+  async function define(
+    cfiRange: string,
+    contents: { window: Window },
+    focus = false,
+  ) {
     const book = reader.epub
     const sel = contents.window.getSelection()
     const term = sel?.toString().replace(/\s+/g, ' ').trim()
@@ -267,7 +281,17 @@
 
     const doc = contents.window.document
     const text = flattenSection(doc.body ?? doc.documentElement).text
-    ondefine(term, rect, text, sectionIndex)
+    ondefine(term, rect, text, sectionIndex, focus)
+  }
+
+  /**
+   * The keyboard route in: define whatever is selected inside the iframe.
+   * Its selection is invisible to the top document, which is why the shell
+   * cannot just ask `getSelection()` the way it does for a PDF.
+   */
+  export function defineSelection() {
+    const win = host?.querySelector('iframe')?.contentWindow
+    if (win) void define('', { window: win }, true)
   }
 
   /** Draw one mark through epub.js, which then owns keeping it in place. */
@@ -378,8 +402,19 @@
   {/if}
 
   {#if editing}
-    <div class="note" style:left="{editing.x}px" style:top="{editing.y}px" role="dialog" aria-label="Note">
+    <!-- Escape closes it, as it does every other dialog here. The note is
+         saved as you type, so closing loses nothing. -->
+    <div
+      class="note"
+      style:left="{editing.x}px"
+      style:top="{editing.y}px"
+      role="dialog"
+      aria-label="Note"
+      tabindex="-1"
+      onkeydown={(e) => e.key === 'Escape' && (editing = null)}
+    >
       <textarea
+        bind:this={noteBox}
         value={editing.text}
         oninput={(e) => updateNote(e.currentTarget.value)}
         placeholder="Note"

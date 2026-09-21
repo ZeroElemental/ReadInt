@@ -69,6 +69,10 @@
   function dismiss() {
     inflight?.abort()
     inflight = null
+    // A request for focus dies with the card it was for. Without this, a `D`
+    // pressed on nothing would leave the flag set and the NEXT card — opened by
+    // a mouse — would yank focus off the text mid-gesture.
+    focusCard = false
     reflowable = null
     anchor = null
     term = ''
@@ -92,7 +96,38 @@
     // a second thing reacting to the same gesture.
     if (reader.tool !== 'select') return
     if (card?.contains(ev.target as Node)) return
+    fromSelection()
+  }
 
+  /**
+   * Define whatever is selected, on request from the keyboard.
+   *
+   * The pointer path only ever fired on `pointerup`, so a reader who selects
+   * with the keyboard (caret browsing, or shift+arrows) had no way to ask for a
+   * definition at all. Unlike a pointer gesture this is an explicit ask, so it
+   * works under any tool — a selection made while Highlight is active is not
+   * being consumed, just left in place — and it moves focus into the card,
+   * because a dialog that opens somewhere focus is not is one a keyboard or
+   * screen-reader user cannot know is there.
+   */
+  export function defineSelection() {
+    focusCard = true
+    fromSelection()
+  }
+
+  /** True when the next card to open should take focus. */
+  let focusCard = false
+
+  // Focus follows the card, once, when the keyboard asked for it. A pointer
+  // selection must NOT do this: it would pull focus off the text mid-gesture.
+  $effect(() => {
+    if (anchor && focusCard && card) {
+      card.focus()
+      focusCard = false
+    }
+  })
+
+  function fromSelection() {
     const sel = getSelection()
     if (!sel || sel.isCollapsed || sel.rangeCount === 0) return dismiss()
 
@@ -139,8 +174,11 @@
     rect: DOMRect,
     sectionText: string,
     sectionIndex: number,
+    /** True when the keyboard asked, so focus should follow the card. */
+    focus = false,
   ) {
     if (!selected || selected.length > MAX_TERM) return dismiss()
+    focusCard = focus
     reflowable = sectionText
     place(selected, rect)
     void lookUp(selected, sectionIndex)
@@ -318,6 +356,7 @@
     class:below={anchor.below}
     style:left="{anchor.x}px"
     style:top="{anchor.y}px"
+    tabindex="-1"
     role="dialog"
     aria-label="Definition"
   >
