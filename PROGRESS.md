@@ -27,8 +27,7 @@ Then a decision, not a task: **Phase 9 (accounts and sync) needs its own
 brainstorm** — it is not an increment on what exists, and it is the first real
 backend. The smaller loose ends, in the order they are worth doing:
 
-- **The `epubjs` advisory is fixed** (issue #3, branch
-  `bugfix/epubjs-xmldom-advisory`) with one line,
+- **The `epubjs` advisory is fixed and merged** (issue #3, PR #4) with one line,
   `"overrides": {"@xmldom/xmldom": "0.8.15"}` in `package.json`. `npm audit` went
   from 2 findings to 0, and the full suite, the build and an EPUB session (17-entry
   TOC, chapter jump, page turns, a highlight at dx 0 / dy 0 / dw 0 before and after
@@ -43,7 +42,9 @@ backend. The smaller loose ends, in the order they are worth doing:
 - **`functions/` has its own audit findings** — 11 moderate, every one transitive
   through `firebase-functions` (`express`/`qs` denial-of-service, `uuid`, the
   `google-gax` chain). Separate lockfile, separate package, deployed server code;
-  not touched by the fix above and not yet tracked as an issue.
+  not touched by the fix above. Tracked as issue #5, which orders the fixes: the
+  non-breaking `npm audit fix` first (it covers the one plausibly reachable pair,
+  `qs`/`express`), the `firebase-functions` 6.x → 7.x major bump as its own task.
 - The rate limit is still an in-memory `Map` (Phase 7).
 - Issue #2 stays open until the Gemini fallback has actually run.
 - Anki TSV was scoped out of Phase 8 and is not built.
