@@ -28,10 +28,19 @@ brainstorm** — it is not an increment on what exists, and it is the first real
 backend. The smaller loose ends, in the order they are worth doing:
 
 - **`epubjs` carries a high-severity `@xmldom/xmldom` advisory** (fifteen of them:
-  XML-serialisation injection and quadratic-time parsing). It reaches the app by
-  parsing an EPUB the reader chose to open, so it is a self-inflicted hang at
-  worst — nothing server-side ever sees the file — but it is real. The only fix
-  is `epubjs` 0.4.2, a semver-major bump that would need Phase 6 re-verified.
+  XML-serialisation injection and quadratic-time parsing) — issue #3. **In a
+  browser it is unreachable:** epub.js parses with the native `DOMParser` and
+  falls back to xmldom only when `DOMParser` is undefined, when a `forceXMLDom`
+  flag is set (nothing sets it), or in IE. The code is bundled but dead. It is
+  still worth a line: `"overrides": {"@xmldom/xmldom": "0.8.15"}` in
+  `package.json` takes `npm audit` to 0 vulnerabilities, and was tried — the full
+  suite, the build, and an EPUB session (17-entry TOC, chapter jump, page turns,
+  a highlight at dx 0 / dy 0 / dw 0 before and after a font change, 6 search hits)
+  all behaved exactly as before. **`npm audit`'s own suggestion of `epubjs@0.4.2`
+  is wrong:** that release is from March 2018, four years OLDER than the 0.3.93 in
+  use, and depends on the ancient unscoped `xmldom@0.1.x`. It is an artefact of
+  npm's version ordering, not a fix. The override was reverted after testing and
+  is not applied.
 - The rate limit is still an in-memory `Map` (Phase 7).
 - Issue #2 stays open until the Gemini fallback has actually run.
 - Anki TSV was scoped out of Phase 8 and is not built.
