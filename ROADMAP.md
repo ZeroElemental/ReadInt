@@ -4,10 +4,10 @@ Every phase, what it covers, what is done, and what is left. `PROGRESS.md` is
 the working checklist you tick as you go; this is the map you read first when
 picking the work back up.
 
-**Where things stand:** Phases 0–5 are done. The app is live at
-<https://readint-6b7d2.web.app> with `/api/define` answering from
-`asia-south1`; Phase 5's code is built and verified but **not deployed yet**.
-**Phase 6 is next.**
+**Where things stand:** Phases 0–5 are done and deployed. The app is live at
+<https://readint-6b7d2.web.app>, with `/api/define` answering from
+`asia-south1` and OCR reading scans in the browser. **Phase 6 is next, and it
+is the last one.**
 
 | Phase | Covers | State |
 |---|---|---|

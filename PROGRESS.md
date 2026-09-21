@@ -6,30 +6,22 @@ it is the handoff between sessions.
 For the plan — every phase, what it covers, what is left — see `ROADMAP.md`.
 For the architecture and its invariants, see `AGENTS.md`.
 
-**Status:** Phases 0–5 complete, deploy included. The app is live at
-<https://readint-6b7d2.web.app> and `/api/define` answers from `asia-south1`.
-Scanned PDFs and images now read. **Phase 5's code is not deployed yet** — it
-is built and verified locally; `firebase deploy` is the outstanding step.
-Phase 6 (EPUB) next.
+**Status:** Phases 0–5 complete and **deployed**. The app is live at
+<https://readint-6b7d2.web.app>, `/api/define` answers from `asia-south1`, and
+scanned PDFs and images are read by OCR in the browser. Phase 6 (EPUB) is the
+only phase left.
 **Last updated:** 2026-09-21
 
 ---
 
 ## Start here next session
 
-**Deploy Phase 5, then start Phase 6 (EPUB).** The deploy is the short one and
-carries a new wrinkle: `public/tessdata/` is ~5.8MB of OCR assets that ship
-with the site, so check they are actually served — the SPA rewrite in
-`firebase.json` would otherwise hand tesseract `index.html` for a missing file,
-and it would fail on garbage rather than on a 404.
+**Phase 6: EPUB.** Everything else is done and live.
 
-```
-curl -sI https://readint-6b7d2.web.app/tessdata/eng.traineddata.gz
-```
-
-Phase 6 is genuinely a different problem, not more of the same: reflowable text
-has no fixed page geometry, so `Annotation.cfi` replaces quads and
-`PageGeometry` stops being meaningful. `ROADMAP.md` has the checklist.
+It is genuinely a different problem, not more of the same: reflowable text has
+no fixed page geometry, so `Annotation.cfi` replaces quads and `PageGeometry`
+stops being meaningful. The lens magnifier goes with it — band only.
+`ROADMAP.md` has the checklist.
 
 Standing checks, all green as of this commit:
 
@@ -420,6 +412,40 @@ callers arriving after the first one had finished, and the text layer, the band
 magnifier and the search panel routinely ask for the same page in the same
 tick. On a digital PDF that wasted a cheap `getTextContent()`; on a scan it
 would have wasted a whole second OCR pass.
+
+### The deploy
+
+Hosting only — `functions/` was untouched, so there was no reason to rebuild
+the function and burn artifact registry on an identical image.
+
+The check that matters is the **content type**, not the status code. Before the
+deploy, the missing asset answered `200 text/html`: the SPA rewrite hands
+`index.html` to anything it cannot find, so a status-code check would have
+passed with no OCR assets deployed at all. After:
+
+```
+/tessdata/eng.traineddata.gz          200  application/gzip             1984273
+/tessdata/tesseract-core-simd-lstm.wasm.js  200  text/javascript        3899472
+```
+
+Both byte-identical to the local copies, which also confirms the
+`.gitattributes` entry did its job — a `.js` file carrying 3.9MB of inlined
+base64 wasm would have been corrupted by line-ending normalisation, and the
+failure would have surfaced as a corrupt wasm on someone else's clone rather
+than here.
+
+**Verified against the live URL, not the dev server:** the scan uploaded,
+OCR'd all 31 words, `coordinate system` selected with its space intact, and
+`/api/define` returned a definition that used the surrounding sentence — *the
+established spatial framework remains valid, stable, or unchanged*, for a page
+whose only other clue is "The coordinate system holds." The whole chain, from
+pixels to Gemini, with nothing in between knowing the page was a scan.
+
+Selection to answer took **4.2s** cold. That is a phrase, so it pays for a
+dictionaryapi.dev miss before falling through to the model; the AI leg alone
+is the 1.8–2.2s measured in Phase 4, and a repeat is a cache hit.
+
+---
 
 ### Known limitations
 
