@@ -27,20 +27,23 @@ Then a decision, not a task: **Phase 9 (accounts and sync) needs its own
 brainstorm** — it is not an increment on what exists, and it is the first real
 backend. The smaller loose ends, in the order they are worth doing:
 
-- **`epubjs` carries a high-severity `@xmldom/xmldom` advisory** (fifteen of them:
-  XML-serialisation injection and quadratic-time parsing) — issue #3. **In a
-  browser it is unreachable:** epub.js parses with the native `DOMParser` and
-  falls back to xmldom only when `DOMParser` is undefined, when a `forceXMLDom`
-  flag is set (nothing sets it), or in IE. The code is bundled but dead. It is
-  still worth a line: `"overrides": {"@xmldom/xmldom": "0.8.15"}` in
-  `package.json` takes `npm audit` to 0 vulnerabilities, and was tried — the full
-  suite, the build, and an EPUB session (17-entry TOC, chapter jump, page turns,
-  a highlight at dx 0 / dy 0 / dw 0 before and after a font change, 6 search hits)
-  all behaved exactly as before. **`npm audit`'s own suggestion of `epubjs@0.4.2`
-  is wrong:** that release is from March 2018, four years OLDER than the 0.3.93 in
-  use, and depends on the ancient unscoped `xmldom@0.1.x`. It is an artefact of
-  npm's version ordering, not a fix. The override was reverted after testing and
-  is not applied.
+- **The `epubjs` advisory is fixed** (issue #3, branch
+  `bugfix/epubjs-xmldom-advisory`) with one line,
+  `"overrides": {"@xmldom/xmldom": "0.8.15"}` in `package.json`. `npm audit` went
+  from 2 findings to 0, and the full suite, the build and an EPUB session (17-entry
+  TOC, chapter jump, page turns, a highlight at dx 0 / dy 0 / dw 0 before and after
+  a font change, 6 search hits) were unchanged. **It needs a hosting redeploy** —
+  the bundled code changes — and that has not been done. Worth knowing: the code
+  was never reachable in a browser (epub.js uses the native `DOMParser` and falls
+  back to xmldom only when `DOMParser` is undefined, when a `forceXMLDom` flag is
+  passed — nothing passes it — or in IE), so this closes a finding rather than an
+  exposure. **`npm audit`'s own suggestion of `epubjs@0.4.2` was wrong:** that
+  release is from March 2018, four years OLDER than the 0.3.93 in use, and depends
+  on the ancient unscoped `xmldom@0.1.x`.
+- **`functions/` has its own audit findings** — 11 moderate, every one transitive
+  through `firebase-functions` (`express`/`qs` denial-of-service, `uuid`, the
+  `google-gax` chain). Separate lockfile, separate package, deployed server code;
+  not touched by the fix above and not yet tracked as an issue.
 - The rate limit is still an in-memory `Map` (Phase 7).
 - Issue #2 stays open until the Gemini fallback has actually run.
 - Anki TSV was scoped out of Phase 8 and is not built.
