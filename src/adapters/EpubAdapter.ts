@@ -43,10 +43,13 @@ export class EpubAdapter {
   private book: Book
   /** The table of contents, flat enough for a `<select>`; epub.js nests it. */
   readonly toc: NavItem[]
+  /** epub.js's own CFI comparator, for putting marks in reading order. */
+  private cfi: { compare(a: string, b: string): number }
 
-  private constructor(book: Book, toc: NavItem[]) {
+  private constructor(book: Book, toc: NavItem[], cfi: { compare(a: string, b: string): number }) {
     this.book = book
     this.toc = toc
+    this.cfi = cfi
   }
 
   static async open(file: Blob): Promise<EpubAdapter> {
@@ -54,7 +57,30 @@ export class EpubAdapter {
     const book = ePub(await file.arrayBuffer())
     await book.ready
     const nav = await book.loaded.navigation
-    return new EpubAdapter(book, flattenToc(nav.toc))
+    // Reached through the default export because that is the one epub.js
+    // guarantees; its typings do not declare `CFI` on it.
+    const CFI = (ePub as unknown as { CFI: new () => { compare(a: string, b: string): number } }).CFI
+    return new EpubAdapter(book, flattenToc(nav.toc), new CFI())
+  }
+
+  /** Reading order between two CFIs: negative when `a` comes first. */
+  compareCfi(a: string, b: string): number {
+    return this.cfi.compare(a, b)
+  }
+
+  /**
+   * The text a CFI range covers, for export.
+   *
+   * Empty on any failure rather than throwing: one mark whose section will not
+   * load should cost that mark's quotation, not the rest of the export.
+   */
+  async textOf(cfiRange: string): Promise<string> {
+    try {
+      const range = await this.book.getRange(cfiRange)
+      return range?.toString().replace(/\s+/g, ' ').trim() ?? ''
+    } catch {
+      return ''
+    }
   }
 
   /**

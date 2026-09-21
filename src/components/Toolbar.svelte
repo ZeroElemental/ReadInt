@@ -1,6 +1,7 @@
 <script lang="ts">
   import { closeDoc, reader, setSpread, setZoom } from '../lib/reader.svelte.ts'
   import type { Tool } from '../lib/types.ts'
+  import ExportMenu from './ExportMenu.svelte'
 
   interface Props {
     onsave: () => void
@@ -100,6 +101,7 @@
     </select>
   {/if}
 
+  <ExportMenu />
   <button onclick={onsearch}>Search</button>
   <button class="save" class:dirty={reader.dirty} onclick={onsave}>
     {reader.dirty ? 'Save *' : 'Saved'}
