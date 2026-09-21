@@ -21,12 +21,17 @@ trigger yourself.
 | In-document search | ✅ Working |
 | Definitions — single words (dictionary) | ✅ Working |
 | Definitions — phrases (AI fallback) | ✅ Working — [deployed](DEPLOY.md) |
-| **Images** (PNG/JPG) + OCR for scanned PDFs | ⬜ Not built — Phase 5 |
+| **Images** (PNG/JPG) + OCR for scanned PDFs | ✅ Working |
 | **EPUB** | ⬜ Not built — Phase 6 |
 
-Dropping an image or an EPUB today fails with `…Adapter.open not implemented`.
-The file type is recognised; the adapter behind it is still a stub. PDFs are
-the supported path.
+Dropping an EPUB today fails with `EpubAdapter.open not implemented`. The file
+type is recognised; the adapter behind it is still a stub.
+
+A scanned PDF or a photo of a page is read by OCR in the browser, and the words
+come back in the same shape the PDF text layer would have produced — so
+selection, highlighting, search and definitions all work on a scan with no
+separate code path. English only, and the first page of a document takes a few
+seconds.
 
 A live deployment runs at <https://readint-6b7d2.web.app>. Running your own is
 a fifteen-minute job — [DEPLOY.md](DEPLOY.md) has the checklist. Without one the
@@ -56,6 +61,10 @@ the coordinate rect used to verify the geometry.
 Vite · Svelte 5 (runes) · TypeScript · pdf.js · Dexie/IndexedDB ·
 perfect-freehand · tesseract.js · epub.js · Firebase Hosting + Functions gen2.
 
+tesseract's wasm core and English model are served from `public/tessdata/`
+rather than a CDN, so OCR works offline and nothing about it reaches the
+network. See the README in that directory.
+
 Deliberately **not** React (a VDOM is the wrong tool for 60fps pointer work),
 not SvelteKit (no SSR, no routing needed), and no state library — Svelte 5
 runes cover it. The reasoning is in [AGENTS.md](AGENTS.md).
@@ -63,7 +72,8 @@ runes cover it. The reasoning is in [AGENTS.md](AGENTS.md).
 ## Privacy
 
 Documents are held in IndexedDB on your machine. They are never uploaded — not
-the file, not a page of text, not your annotations.
+the file, not a page of text, not your annotations. That includes OCR: a
+scanned page is read on your device, by wasm this app serves itself.
 
 Two things cross the network, and only when you select text and ask for a
 definition:

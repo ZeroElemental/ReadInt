@@ -6,9 +6,14 @@ follows their own cursor down the page the way a finger tracks a line. On top of
 that: highlighting, underlining, freehand ink, sticky notes, selection-to-
 definition, in-document search, and explicit save/restore of all markup.
 
-**Only the PDF path is implemented.** `ImageAdapter` and `EpubAdapter` are
-stubs that throw on open (Phases 5 and 6). Do not assume a feature works because
-its shape exists — `ROADMAP.md` says what is real.
+**PDFs and images are implemented; EPUB is not.** `EpubAdapter` still throws on
+open (Phase 6). Do not assume a feature works because its shape exists —
+`ROADMAP.md` says what is real.
+
+A scanned PDF is not a fourth adapter. `PdfAdapter` notices a page with no text
+layer, rasterises it and reads it with tesseract, and the words come back as
+the same `TextItem` shape the native path produces. That is invariant 2, and it
+is why search and definitions work on a scan with no code of their own.
 
 `/api/define` is deployed and live (`readint-6b7d2`, `asia-south1`). The model
 id in `functions/src/index.ts` is a **dependency with a support window, not a
@@ -114,6 +119,8 @@ src/
     keys.ts            keyboard map (a plain object, not a library)
     ink.ts             perfect-freehand -> filled SVG outline, in page units
     search.ts          runs -> one string -> folded -> hits -> quads (pure)
+    ocr.ts             tesseract boxes -> TextItem[] in page units (pure)
+    tesseract.ts       the OCR worker; dynamic-import ONLY, never static
   adapters/
     types.ts           DocAdapter interface + PageGeometry
     PdfAdapter.ts      pdf.js; also handles scanned PDFs via OCR
@@ -130,7 +137,16 @@ src/
     Toolbar.svelte / Library.svelte
 functions/
     src/index.ts       POST /api/define — the only server, no framework
+public/
+    tessdata/          self-hosted wasm core + English model (see its README)
 ```
+
+**`lib/tesseract.ts` must never be imported statically.** It is how tesseract
+stays in its own chunk, and a single static import anywhere pulls 5MB back into
+the entry bundle — which is why OCR progress lives in the store rather than
+beside the worker. The build says so out loud if this is broken
+(`INEFFECTIVE_DYNAMIC_IMPORT`). The same rule, for the same reason, is why
+`PdfAdapter` reaches pdf.js only through `await import()`.
 
 ## Commands
 

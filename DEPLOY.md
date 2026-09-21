@@ -216,6 +216,19 @@ cost nothing at all.
 
 ## Notes
 
+**The OCR assets ship with the site.** `public/tessdata/` is ~5.8MB — a wasm
+core and an English model — which Vite copies into `dist/` verbatim. After a
+deploy, check one is actually being served:
+
+```
+curl -sI https://readint-6b7d2.web.app/tessdata/eng.traineddata.gz
+```
+
+It must come back as the file, **not** `text/html`. The SPA rewrite in
+`firebase.json` answers anything it cannot find with `index.html`, so a missing
+asset reaches tesseract as a page of HTML and fails as a corrupt wasm rather
+than as a 404.
+
 **Node version.** This machine runs Node 24; `functions/package.json` pins
 `engines.node: 22` and `firebase.json` deploys the `nodejs22` runtime. The
 local version only affects the local TypeScript build, so the mismatch is

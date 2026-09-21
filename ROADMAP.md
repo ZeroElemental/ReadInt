@@ -4,9 +4,10 @@ Every phase, what it covers, what is done, and what is left. `PROGRESS.md` is
 the working checklist you tick as you go; this is the map you read first when
 picking the work back up.
 
-**Where things stand:** Phases 0–4 are done, deploy included — the app is live
-at <https://readint-6b7d2.web.app> with `/api/define` answering from
-`asia-south1`. **Phase 5 is next.**
+**Where things stand:** Phases 0–5 are done. The app is live at
+<https://readint-6b7d2.web.app> with `/api/define` answering from
+`asia-south1`; Phase 5's code is built and verified but **not deployed yet**.
+**Phase 6 is next.**
 
 | Phase | Covers | State |
 |---|---|---|
@@ -15,8 +16,8 @@ at <https://readint-6b7d2.web.app> with `/api/define` answering from
 | 2 | Magnifier (lens + band) | ✅ Done |
 | 3 | Annotations + explicit save | ✅ Done |
 | 4 | Definitions, in-document search, first deploy | ✅ Done |
-| 5 | OCR for scanned PDFs and images | ⬜ **Next** |
-| 6 | EPUB | ⬜ Not started |
+| 5 | OCR for scanned PDFs and images | ✅ Done |
+| 6 | EPUB | ⬜ **Next** |
 | — | Deferred: sync, AI study layer, export, analytics | ⬜ Needs a backend |
 
 The order is deliberate. Each phase depends on the one before it being *proven*,
@@ -129,27 +130,39 @@ the server cannot drift apart.
 
 ---
 
-## Phase 5 — OCR ⬜ **Next**
+## Phase 5 — OCR ✅
 
-- [ ] `workers/ocr.worker.ts` — tesseract.js in a Web Worker
-- [ ] Scanned detection: < ~20 chars/page on a sample → queue OCR
-- [ ] Word boxes → `TextItem[]` in page units, persisted (`ocrDone`)
-- [ ] `ImageAdapter` — one image as a one-page document
-- [ ] Per-page progress UI
+- [x] `lib/tesseract.ts` — one shared tesseract worker, queued, with progress
+- [x] Scanned detection: < 20 chars/page → rasterise at 216dpi and read it
+- [x] Word boxes → `TextItem[]` in page units, persisted (`source`, `ocrDone`)
+- [x] `ImageAdapter` — one image as a one-page document
+- [x] Per-page progress pill
+- [x] `public/tessdata/` — self-hosted core and model; OCR works offline
 
-**Verify:** a scanned PDF and a photo of a page both become selectable, and
-search + definitions work on them with no OCR-specific code path.
+**Two deviations from what this file asked for**, both recorded in
+`PROGRESS.md` with the reasoning:
 
-**Notes.** The hook is already in place: `PdfAdapter.getTextItems` carries a
-`TODO(phase-5)` next to `SCANNED_CHAR_THRESHOLD`. Invariant 2 is the whole point
-here — OCR results must be normalised into the same `TextItem` shape so nothing
-downstream can tell which path ran. `ImageAdapter` is a stub implementing the
-current interface; its `getViewport` should report the image's natural pixel
-size with a y-up flip.
+1. **No `workers/ocr.worker.ts`.** `createWorker()` already spawns and owns a
+   Web Worker, so ours would have been a worker inside a worker. `ocr.ts` is
+   the pure box-to-quad conversion and `tesseract.ts` is a thin owner of
+   tesseract's own worker.
+2. **The wasm core and language model are served from `public/tessdata/`**, not
+   from tesseract's default CDN. Self-hosting costs ~5.8MB in the repo and buys
+   offline OCR plus a privacy claim that stays literally true: the README says
+   exactly two things cross the network, and a third host downloading a model
+   would have made that a footnote.
+
+**Proven by:** an image-only PDF that pdf.js reports 0 text runs for. All 31
+words read, `ANCHOR` landed within 0.74pt of its predicted page quad with 22.8%
+ink coverage inside it and 0 a line above, search found "understand" across a
+hyphenated line break with no search-side changes, and a highlight survived a
+reload matching to 0.2pt at three zooms. A PNG of the same page opens as a
+one-page document; its y-flip was checked against the raster rather than
+against itself.
 
 ---
 
-## Phase 6 — EPUB ⬜
+## Phase 6 — EPUB ⬜ **Next**
 
 - [ ] `EpubAdapter` — epub.js paginated + spread
 - [ ] CFI-based annotations (`Annotation.cfi`)
@@ -183,11 +196,12 @@ in place for it.
 
 ## Known limitations
 
-- **Only PDFs open.** `detectFormat` recognises images and EPUB, but their
-  adapters are stubs that throw, so dropping one surfaces
-  `…Adapter.open not implemented` in the library. Phases 5 and 6 respectively.
-  The format detection is deliberately ahead of the adapters — the shape is
-  committed so the shell never learns what it is reading.
+- **EPUB does not open.** `detectFormat` recognises it, but `EpubAdapter` is
+  still a stub that throws, so dropping one surfaces
+  `EpubAdapter.open not implemented` in the library. Phase 6. PDFs and images
+  both work.
+- **OCR is English-only, needs SIMD, and reads one page at a time.** The full
+  list, with the reasoning for each, is in `PROGRESS.md` under Phase 5.
 - **Two tabs on one document share a `drafts` row** and overwrite each other's
   autosave. Out of scope while the app is single-device; wants a tab lock or a
   per-tab draft id when sync arrives.
