@@ -4,10 +4,9 @@ Every phase, what it covers, what is done, and what is left. `PROGRESS.md` is
 the working checklist you tick as you go; this is the map you read first when
 picking the work back up.
 
-**Where things stand:** every phase is done. Phases 0–5 are deployed and live
-at <https://readint-6b7d2.web.app>; **Phase 6 is built and verified but not
-deployed yet**. What remains after that is the deferred backend work, which was
-never scoped as a phase.
+**Where things stand:** every phase is done, pushed and deployed at
+<https://readint-6b7d2.web.app>. Phase 7 is three of four; what remains after
+that is export, then the deferred backend work.
 
 | Phase | Covers | State |
 |---|---|---|

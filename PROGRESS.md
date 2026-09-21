@@ -6,34 +6,31 @@ it is the handoff between sessions.
 For the plan — every phase, what it covers, what is left — see `ROADMAP.md`.
 For the architecture and its invariants, see `AGENTS.md`.
 
-**Status:** every roadmap phase is done, and Phase 7 (release hardening) is three
-of four built. Phases 0–5 are deployed; **Phases 6 and 7 are built and verified
-locally but not pushed or deployed**.
+**Status:** every roadmap phase is done and **deployed**, and pushed to GitHub. Phase
+7 (release hardening) is three of four; its last item, the rate limit, is held
+for a Firestore decision. Phase 8 (export) is next.
 **Last updated:** 2026-09-21
 
 ---
 
 ## Start here next session
 
-**Push and deploy.** Two chores, both waiting on an explicit go because they are
-outward-facing:
+**Phase 8: export.** Everything before it is live: `origin/main` and the site
+are both at `cd83af9`, and the function was redeployed with the Gemini fix.
 
-```
-git push origin main          # GitHub is at the Phase 4 docs commit
-npm run build && firebase deploy --only hosting
-firebase deploy --only functions   # ONLY if you want #2's fix live
-```
+The live checks that were run, so they need not be run again: the served bundle
+matches the local build; `/api/define` answers in 2.4 s with its guards intact
+(400, 400, 405); and an EPUB uploaded to the production URL held a highlight at
+dx 0, dy 0, dw 0 across font sizes of 16, 24.96 and 12.8 px.
 
-The push is the first time `public/tessdata/` (5.7MB of wasm and model) reaches
-GitHub; `.gitattributes` keeps the inlined wasm out of line-ending
-normalisation. After the hosting deploy, open an EPUB on the live URL and check a
-highlight survives a font-size change — the one behaviour a build cannot verify.
+**Phase 8 has one decision in it before any code:** a flattened annotated PDF
+either destroys the text layer (image-only, no new dependency) or needs a PDF
+writer such as `pdf-lib`, which would be the first dependency added since the
+initial commit. The Markdown and Anki-TSV exports do not depend on it.
 
-**Then one decision:** Phase 7's last item, moving the rate limit off an
-in-memory `Map`, means creating a Firestore database in the live project. It was
-held for that reason rather than done as a side effect. After it comes Phase 8
-(export), which needs no backend, and Phases 9–10 (sync, the AI layer), which
-each need their own brainstorm. `ROADMAP.md` has the shape of all of them.
+Two things are deliberately still open: issue #2 stays open until the fallback
+model has actually run against the project's key, and the rate limit is still an
+in-memory `Map` (see Phase 7).
 
 Standing checks, all green as of this commit:
 
