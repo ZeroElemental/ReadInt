@@ -750,6 +750,27 @@ touched, 40% at most.
   is disabled with an explanation on an EPUB, and the result appears in a status
   region and clears itself after six seconds.
 
+### The deploy, and the bug it found
+
+Hosting only — the function is untouched. Verified on the live URL: the served
+bundle matches the local build, both lazy chunks (`pdf-lib` and the export module)
+come back as JavaScript rather than the SPA's HTML fallback, and a scan opened on
+production, was OCR'd (31 words), highlighted on "coordinate system", and exported
+both ways — Markdown from the OCR text, and a valid `%PDF-1.7` of 95,138 bytes
+against the original's 94,600.
+
+**It also found a bug that had been live since Phase 4.** The first live attempt
+failed with `Failed to fetch dynamically imported module` — a browser that had
+visited before held a cached `index.html` naming chunks the new deploy had
+replaced. Firebase serves `index.html` with `max-age=3600` by default; the SPA
+rewrite answers a deleted chunk's URL with HTML; and the `/assets/**` rule then
+marks that HTML immutable for a year. Every deploy since Phase 4 broke the app for
+returning visitors for up to an hour, and it stayed hidden because every previous
+live check used a fresh profile. `index.html` now revalidates (`no-cache`); hashed
+assets stay immutable. A tab held open across a deploy still breaks lazily until
+reloaded — recorded in DEPLOY.md rather than solved, since an automatic reload
+could interrupt unsaved work.
+
 ### Known limitations
 
 - **The marks are drawn, not embedded as PDF annotation objects.** They cannot be

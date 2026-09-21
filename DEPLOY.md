@@ -216,6 +216,19 @@ cost nothing at all.
 
 ## Notes
 
+**`index.html` must revalidate; everything hashed must not.** Firebase Hosting
+serves `index.html` with `max-age=3600` by default, and each build renames every
+chunk. A browser holding a cached `index.html` therefore asks for chunk names the
+new deploy deleted — and because the SPA rewrite answers any unknown path with
+`index.html`, it gets HTML back, served as `text/html` and (via the `/assets/**`
+rule) marked immutable for a year. The app then cannot open a PDF until the hour
+runs out. Found by opening the live site in a browser that had visited before;
+fresh-profile checks never show it. `firebase.json` now sends `no-cache` for `/`
+and `/index.html` (the ETag makes a revalidation a cheap 304). **Still true:** a
+tab left open ACROSS a deploy has the same problem for lazily-loaded chunks, and a
+reload fixes it. Unsolved by design for now — auto-reloading could interrupt
+unsaved work.
+
 **The OCR assets ship with the site.** `public/tessdata/` is ~5.8MB — a wasm
 core and an English model — which Vite copies into `dist/` verbatim. After a
 deploy, check one is actually being served:
