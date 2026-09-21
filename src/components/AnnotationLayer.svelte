@@ -54,9 +54,21 @@
   const notes = $derived(mine.filter((a) => a.type === 'note'))
   const erasing = $derived(layer === 'erase')
 
-  /** One erasable box per annotation, whatever shape it actually is. */
+  /**
+   * One erasable box per annotation, whatever shape it actually is.
+   *
+   * Gated on `vp` as well as the tool: this layer is rendered OUTSIDE the
+   * `{#if vp}` below, so with the erase tool live and the viewport not yet
+   * resolved — switching documents, most obviously — `box()` would dereference
+   * a null viewport. Invariant 9, enforced where every target routes through
+   * rather than in the markup.
+   *
+   * It also drops a mark with no page geometry at all, which is what an EPUB
+   * annotation is: `bounds` returns null for one, and it never becomes a
+   * target on a page that could not draw it anyway.
+   */
   const targets = $derived(
-    erasing
+    erasing && vp
       ? mine
           .map((a) => ({ a, quad: bounds(a) }))
           .filter((t): t is { a: Annotation; quad: Quad } => t.quad !== null)
