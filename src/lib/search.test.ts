@@ -48,6 +48,12 @@ test('runs split mid-word are joined without a space; a real gap keeps one', () 
   // 8pt of daylight against a 12pt line: a word boundary.
   const spaced = [run('under', 72, 0), run('stand', 110, 0)]
   assert.equal(flatOf(spaced), 'under stand')
+
+  // The narrow end of a real space. An OCR'd page measures these against the
+  // ink's height rather than the font's, so the threshold has to clear the
+  // kerning noise of a mid-word split without swallowing a genuine gap.
+  const narrow = [run('under', 72, 0), run('stand', 104, 0)]
+  assert.equal(flatOf(narrow), 'under stand')
 })
 
 test('case, diacritics and ligatures all fold away', () => {

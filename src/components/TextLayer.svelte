@@ -17,6 +17,7 @@
    */
   import { reader, addAnnotation, newAnnotation } from '../lib/reader.svelte.ts'
   import { mergeQuadsByLine, quadToScreen, relativeTo, screenToQuad } from '../lib/coords.ts'
+  import { needsSpace } from '../lib/search.ts'
   import { pageText } from '../adapters/index.ts'
   import type { PageGeometry } from '../adapters/types.ts'
   import type { TextItem } from '../lib/types.ts'
@@ -51,10 +52,20 @@
 
     const host = layer.getBoundingClientRect()
     const scale = (host.width / (layer.offsetWidth || 1)) * reader.zoom
+    const rects = [...range.getClientRects()]
+      .filter((r) => r.width > 0 && r.height > 0)
+      .map((r) => screenToQuad(relativeTo(r, host, scale), vp!))
+    if (rects.length === 0) return
+
+    // These quads came from the DOM, so they are rounded, and dividing by zoom
+    // magnifies that: at 25% one screen pixel is four page units, and on an
+    // image document a page unit is a pixel rather than a point. The fixed
+    // baseline tolerance that suits exact extraction geometry then reads one
+    // line as two and the stroke breaks in half. Scale it to the text's own
+    // height, which is the thing a line is actually measured against.
     const quads = mergeQuadsByLine(
-      [...range.getClientRects()]
-        .filter((r) => r.width > 0 && r.height > 0)
-        .map((r) => screenToQuad(relativeTo(r, host, scale), vp!)),
+      rects,
+      0.3 * Math.max(...rects.map((q) => q.h)),
     )
     if (quads.length === 0) return
 
@@ -73,10 +84,28 @@
   let layer = $state<HTMLDivElement | null>(null)
   let items = $state<TextItem[]>([])
 
-  /** Spans in scale-1 CSS px: everything needed to place one, computed once. */
+  /**
+   * Spans in scale-1 CSS px: everything needed to place one, computed once.
+   *
+   * `space` is a separator rendered BETWEEN spans, and it is the only thing
+   * here that is not geometry. Absolutely positioned spans are adjacent to the
+   * selection with nothing between them, so without it `getSelection()` runs
+   * two words together — invisible on a digital PDF, constant on an OCR'd page
+   * where every word is its own run. The rule is search.ts's, not a second
+   * opinion, so the selected string and the searched string agree.
+   *
+   * It has to be a NON-BREAKING space. A plain one is the only in-flow content
+   * in a layer of absolutely positioned spans, so white-space processing
+   * collapses every one of them away and the selection reads exactly as it did
+   * before. Selection normalises   back to a space downstream.
+   */
   const placed = $derived(
     vp
-      ? items.map((item) => ({ item, box: quadToScreen(item.quad, vp) }))
+      ? items.map((item, i) => ({
+          item,
+          box: quadToScreen(item.quad, vp),
+          space: i > 0 && needsSpace(items[i - 1], item),
+        }))
       : [],
   )
 
@@ -139,8 +168,8 @@
 <svelte:document onpointerup={commitSelection} />
 
 <div bind:this={layer} class="text-layer" class:interactive>
-  {#each placed as { item, box }, i (i)}
-    <span
+  {#each placed as { item, box, space }, i (i)}
+    {#if space}{' '}{/if}<span
       data-line={item.lineId}
       style:left="calc({box.left} * var(--z) * 1px)"
       style:top="calc({box.top} * var(--z) * 1px)"
@@ -153,6 +182,10 @@
   .text-layer {
     position: absolute;
     inset: 0;
+    /* The word separators are the layer's own in-flow content; each span sets
+       its own size, so zeroing this leaves the separators with no width to
+       overflow with, however many words a page has. */
+    font-size: 0;
     z-index: 4;
     pointer-events: none;
     user-select: none;

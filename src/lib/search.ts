@@ -54,8 +54,18 @@ const FOLD: Record<string, string> = {
   ' ': ' ',
 }
 
-/** A run ends a word when the next run starts this far past its right edge. */
-const GAP_RATIO = 0.25
+/**
+ * A run ends a word when the next run starts this far past its right edge,
+ * measured against the run's own height.
+ *
+ * Calibrated, not guessed. The case this exists for is a run split mid-word,
+ * where the gap is zero or slightly negative; kerning puts the ceiling on that
+ * noise at roughly 0.05. Real spaces measured across an OCR'd page of 21pt
+ * serif ran 0.242 to 0.636, and the original 0.25 sat squarely inside that
+ * range — close enough that one pair in twenty-four came back as `Everyquad`.
+ * 0.12 is twice the kerning ceiling and half the narrowest real space seen.
+ */
+const GAP_RATIO = 0.12
 
 /**
  * One page's runs as one string.
@@ -70,6 +80,23 @@ const GAP_RATIO = 0.25
  *   directly, so "under-\nstand" flattens to "understand" and is found by
  *   searching for it. Anything else gets a space.
  */
+/**
+ * Does a space belong between these two consecutive runs?
+ *
+ * Exported because the text layer has to make the SAME call: a run boundary is
+ * not a word boundary, and the browser's own selection concatenates adjacent
+ * spans with nothing in between. On a digital PDF that rarely shows, because
+ * pdf.js splits a run at a font change and both halves are usually mid-word.
+ * On an OCR'd page every single word is its own run, so without this a
+ * two-word selection reads `coordinatesystem` — and that is what reaches the
+ * definition popup. One rule, both consumers, no chance of them disagreeing.
+ */
+export function needsSpace(prev: TextItem, item: TextItem): boolean {
+  if (item.lineId !== prev.lineId) return true
+  const gap = item.quad.x - (prev.quad.x + prev.quad.w)
+  return gap > GAP_RATIO * item.quad.h
+}
+
 export function flattenPage(items: TextItem[]): Flat {
   const text: string[] = []
   const owners: number[] = []
@@ -97,9 +124,8 @@ export function flattenPage(items: TextItem[]): Flat {
         // not a character of the word, so it leaves with its map entries.
         if (last === '-' || last === '­') drop()
         else push(' ', -1, -1)
-      } else {
-        const gap = item.quad.x - (prev.quad.x + prev.quad.w)
-        if (gap > GAP_RATIO * item.quad.h) push(' ', -1, -1)
+      } else if (needsSpace(prev, item)) {
+        push(' ', -1, -1)
       }
     }
 
