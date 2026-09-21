@@ -18,6 +18,15 @@
     { id: 'note', label: 'Note', key: 'N' },
     { id: 'erase', label: 'Erase', key: 'E' },
   ]
+
+  const reflowable = $derived(reader.format === 'epub')
+
+  /**
+   * Ink has no anchor in reflowing text. A stroke is hundreds of points, and
+   * there is no stable point to pin them to once the font size changes — so
+   * the tool is disabled rather than allowed to make marks that drift.
+   */
+  const disabled = (id: Tool) => reflowable && id === 'pen'
 </script>
 
 <header class="toolbar">
@@ -27,8 +36,9 @@
     {#each TOOLS as t (t.id)}
       <button
         class:active={reader.tool === t.id}
+        disabled={disabled(t.id)}
         onclick={() => (reader.tool = t.id)}
-        title="{t.label} ({t.key})"
+        title={disabled(t.id) ? 'Not available in EPUB' : `${t.label} (${t.key})`}
       >
         {t.label}
       </button>
@@ -50,20 +60,28 @@
   <div class="spacer"></div>
 
   <button onclick={() => onturn(-1)} aria-label="Previous page">‹</button>
-  <span class="pages">{reader.spreadStart + 1} / {reader.pageCount || '—'}</span>
+  <!-- A reflowable document has no page number to show; EpubView's footer
+       carries the chapter and percentage that mean something instead. -->
+  {#if !reflowable}
+    <span class="pages">{reader.spreadStart + 1} / {reader.pageCount || '—'}</span>
+  {/if}
   <button onclick={() => onturn(1)} aria-label="Next page">›</button>
 
   <button onclick={() => setZoom(reader.zoom / 1.25)} aria-label="Zoom out">−</button>
   <span class="zoom">{Math.round(reader.zoom * 100)}%</span>
   <button onclick={() => setZoom(reader.zoom * 1.25)} aria-label="Zoom in">+</button>
 
-  <button
-    class:active={reader.settings.spread}
-    onclick={() => setSpread(!reader.settings.spread)}
-    title="Two-page spread"
-  >
-    {reader.settings.spread ? 'Spread' : 'Single'}
-  </button>
+  <!-- epub.js decides its own column count from the width, and the magnifier
+       cannot see into an iframe: zoom drives font size there instead. -->
+  {#if !reflowable}
+    <button
+      class:active={reader.settings.spread}
+      onclick={() => setSpread(!reader.settings.spread)}
+      title="Two-page spread"
+    >
+      {reader.settings.spread ? 'Spread' : 'Single'}
+    </button>
+  {/if}
 
   <button
     onclick={() =>
@@ -74,11 +92,13 @@
     {reader.settings.readingDirection.toUpperCase()}
   </button>
 
-  <select bind:value={reader.settings.magnifier} aria-label="Magnifier mode">
-    <option value="off">No magnifier</option>
-    <option value="lens">Lens</option>
-    <option value="band">Line band</option>
-  </select>
+  {#if !reflowable}
+    <select bind:value={reader.settings.magnifier} aria-label="Magnifier mode">
+      <option value="off">No magnifier</option>
+      <option value="lens">Lens</option>
+      <option value="band">Line band</option>
+    </select>
+  {/if}
 
   <button onclick={onsearch}>Search</button>
   <button class="save" class:dirty={reader.dirty} onclick={onsave}>
@@ -87,6 +107,10 @@
 </header>
 
 <style>
+  .tools button:disabled {
+    opacity: 0.35;
+    cursor: default;
+  }
   .toolbar {
     display: flex;
     align-items: center;

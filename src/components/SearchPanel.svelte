@@ -15,7 +15,7 @@
   import { untrack } from 'svelte'
   import { reader, clearSearch, goToHit } from '../lib/reader.svelte.ts'
   import { pageText } from '../adapters/index.ts'
-  import type { DocAdapter } from '../adapters/index.ts'
+  import type { DocAdapter, EpubAdapter } from '../adapters/index.ts'
   import { findAll, flattenPage, hitQuads, sentenceAround } from '../lib/search.ts'
 
   interface Props {
@@ -58,16 +58,54 @@
   $effect(() => {
     const q = query.trim()
     const adapter = reader.adapter
+    const epub = reader.epub
     const docId = reader.docId
     const mine = ++generation
 
     clearSearch()
     scanning = -1
-    if (!q || !adapter || !docId) return
+    if (!q || !docId) return
 
-    const timer = setTimeout(() => void scan(mine, adapter, docId, q), DEBOUNCE_MS)
+    const timer = setTimeout(() => {
+      if (epub) void scanEpub(mine, epub, q)
+      else if (adapter) void scan(mine, adapter, docId, q)
+    }, DEBOUNCE_MS)
     return () => clearTimeout(timer)
   })
+
+  /**
+   * The same scan, one spine section at a time.
+   *
+   * Streaming for the same reason the paged version streams: the first pass
+   * over a book loads every section, and a reader should see the early hits
+   * while the later chapters are still being read.
+   */
+  async function scanEpub(mine: number, epub: EpubAdapter, q: string) {
+    for (const index of epub.sectionIndices()) {
+      if (mine !== generation) return
+      scanning = index
+
+      let found
+      try {
+        found = await epub.searchSection(index, q)
+      } catch (err) {
+        console.error(`section ${index} search failed`, err)
+        continue
+      }
+      if (mine !== generation) return
+      if (found.length === 0) continue
+
+      reader.hits.push(
+        ...found.map((hit) => ({
+          pageIndex: hit.sectionIndex,
+          cfi: hit.cfi,
+          snippet: tidy(hit.snippet),
+        })),
+      )
+      if (reader.activeHit === -1) goToHit(0)
+    }
+    if (mine === generation) scanning = -1
+  }
 
   async function scan(mine: number, adapter: DocAdapter, docId: string, q: string) {
     for (let p = 0; p < reader.pageCount; p++) {
@@ -85,7 +123,7 @@
       if (mine !== generation) return
 
       const flat = flattenPage(items)
-      const found = findAll(flat, q)
+      const found = findAll(flat.text, q)
       if (found.length === 0) continue
 
       reader.hits.push(
@@ -147,7 +185,8 @@
 
   <p class="status" role="status">
     {#if scanning >= 0}
-      Searching p.{scanning + 1}… {reader.hits.length} so far
+      {reader.epub ? 'Searching' : `Searching p.${scanning + 1}…`}
+      {reader.hits.length} so far
     {:else if query.trim() && !reader.hits.length}
       No matches.
     {:else if reader.hits.length}
@@ -159,7 +198,7 @@
     {#each reader.hits as hit, i (i)}
       <li>
         <button class:current={i === reader.activeHit} onclick={() => goToHit(i)}>
-          <span class="page">p.{hit.pageIndex + 1}</span>
+          {#if !hit.cfi}<span class="page">p.{hit.pageIndex + 1}</span>{/if}
           {hit.snippet}
         </button>
       </li>

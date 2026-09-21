@@ -16,6 +16,7 @@
   import { handleKey } from '../lib/keys.ts'
   import { discardDraft, putDraft, saveAnnotations, touchDocument } from '../lib/storage.ts'
   import PageView from './PageView.svelte'
+  import EpubView from './EpubView.svelte'
   import Toolbar from './Toolbar.svelte'
   import SearchPanel from './SearchPanel.svelte'
   import DefinitionPopup from './DefinitionPopup.svelte'
@@ -31,6 +32,11 @@
   let searchSeed = $state('')
   let turning = $state<'fwd' | 'back' | null>(null)
   let book = $state<HTMLDivElement | null>(null)
+  /** Set only for a reflowable document; the branch below decides which. */
+  let epubView = $state<ReturnType<typeof EpubView> | null>(null)
+  let popup = $state<ReturnType<typeof DefinitionPopup> | null>(null)
+
+  const reflowable = $derived(reader.format === 'epub')
 
   const rtl = $derived(reader.settings.readingDirection === 'rtl')
   const focused = $derived(focusedPage())
@@ -42,6 +48,8 @@
    * ~1190px wide and would open scrolled off the screen.
    */
   $effect(() => {
+    // Reflowable text has no viewport to fit to. `zoom` still drives EPUB, but
+    // as a font size, and 100% is the right place to start.
     const adapter = reader.adapter
     if (!adapter) return
     let stale = false
@@ -65,6 +73,10 @@
   /** Every turn goes through here so keyboard and toolbar animate alike. */
   let timer: ReturnType<typeof setTimeout> | undefined
   function turn(delta: number) {
+    // epub.js owns pagination, so a turn is a request, not a page index — and
+    // there is no leaf to animate.
+    if (reflowable) return epubView?.turn(delta)
+
     const before = reader.spreadStart
     turnPage(delta)
     if (reader.spreadStart === before) return // already at an end
@@ -153,22 +165,29 @@
     </div>
   {/if}
 
-  <div bind:this={book} class="book" data-turning={turning}>
-    {#if reader.settings.spread}
-      <PageView pageIndex={reader.spreadStart} side="left" focused={focused === reader.spreadStart} />
-      <div class="gutter" aria-hidden="true"></div>
-      <PageView pageIndex={reader.spreadStart + 1} side="right" focused={focused === reader.spreadStart + 1} />
-    {:else}
-      <PageView pageIndex={reader.spreadStart} side="left" focused={true} />
-    {/if}
-  </div>
+  {#if reflowable}
+    <EpubView
+      bind:this={epubView}
+      ondefine={(term, rect, text, section) => popup?.showAt(term, rect, text, section)}
+    />
+  {:else}
+    <div bind:this={book} class="book" data-turning={turning}>
+      {#if reader.settings.spread}
+        <PageView pageIndex={reader.spreadStart} side="left" focused={focused === reader.spreadStart} />
+        <div class="gutter" aria-hidden="true"></div>
+        <PageView pageIndex={reader.spreadStart + 1} side="right" focused={focused === reader.spreadStart + 1} />
+      {:else}
+        <PageView pageIndex={reader.spreadStart} side="left" focused={true} />
+      {/if}
+    </div>
+  {/if}
 
   {#if searchOpen}
     {#key seedNonce}
       <SearchPanel seed={searchSeed} onclose={() => (searchOpen = false)} />
     {/key}
   {/if}
-  <DefinitionPopup onfind={findInDocument} />
+  <DefinitionPopup bind:this={popup} onfind={findInDocument} />
 </div>
 
 <style>

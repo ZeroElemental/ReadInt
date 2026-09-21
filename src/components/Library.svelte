@@ -52,15 +52,19 @@
   async function open(rec: DocumentRecord) {
     // If this throws, reader state is never touched — a corrupt file leaves the
     // library on screen with an error rather than a half-open reader.
-    const adapter = await openDocument(rec.blob, rec.format)
+    const opened = await openDocument(rec.blob, rec.format)
     // The saved marks, plus any autosave that outlived a crash. The draft is
     // carried, never merged — the user is asked.
     const [saved, draft] = await Promise.all([
       annotationsForDoc(rec.id),
       getDraft(rec.id),
     ])
-    openDoc(rec, adapter, saved, draft ?? null)
-    await touchDocument(rec.id, { pageCount: adapter.pageCount })
+    openDoc(rec, opened, saved, draft ?? null)
+    // A reflowable document has no page count to record. Its position is a CFI,
+    // written by EpubView as the reader moves.
+    if (opened.kind === 'paged') {
+      await touchDocument(rec.id, { pageCount: opened.adapter.pageCount })
+    }
   }
 
   async function reopen(id: string) {

@@ -10,6 +10,7 @@
 
 import type {
   Annotation,
+  DocFormat,
   DocumentRecord,
   SearchHit,
   Settings,
@@ -17,13 +18,32 @@ import type {
 } from './types.ts'
 import { DEFAULT_SETTINGS } from './storage.ts'
 import type { DocAdapter } from '../adapters/types.ts'
+import type { OpenedDoc } from '../adapters/index.ts'
+import type { EpubAdapter } from '../adapters/EpubAdapter.ts'
 
 export const reader = $state({
   /** null = show the library. */
   docId: null as string | null,
   docName: '',
+  /**
+   * Exactly one of these is set, and `format` says which.
+   *
+   * Invariant 2 narrowed in Phase 6: the shell never knows which PAGED format
+   * it is reading, and a scan is still not a fourth case. Reflowable text is a
+   * different contract, not another implementation of the same one.
+   */
+  format: null as DocFormat | null,
   adapter: null as DocAdapter | null,
+  epub: null as EpubAdapter | null,
   pageCount: 0,
+
+  /**
+   * Where we are in a reflowable document. Null for paged ones.
+   *
+   * A CFI rather than a page index because it survives a font-size change —
+   * which is the whole reason EPUB annotations are CFIs too.
+   */
+  epubAt: null as { cfi: string; percentage: number; chapter: string } | null,
 
   /** Left page of the current spread. Always even in LTR spread mode. */
   spreadStart: 0,
@@ -139,6 +159,11 @@ export function goToHit(index: number) {
   if (!hit) return
 
   reader.activeHit = index
+
+  // Reflowable: there is no page to turn to, so the hit IS its address. The
+  // view watches activeHit and displays the CFI.
+  if (hit.cfi) return
+
   reader.spreadStart = clampSpreadStart(hit.pageIndex)
 
   if (!reader.settings.spread) return
@@ -152,12 +177,17 @@ export function goToHit(index: number) {
 /** Enter the reader. The adapter is already open; this just adopts it. */
 export function openDoc(
   rec: DocumentRecord,
-  adapter: DocAdapter,
+  opened: OpenedDoc,
   annotations: Annotation[] = [],
   draft: { annotations: Annotation[]; savedAt: number } | null = null,
 ) {
-  reader.adapter = adapter
-  reader.pageCount = adapter.pageCount
+  reader.format = rec.format
+  reader.adapter = opened.kind === 'paged' ? opened.adapter : null
+  reader.epub = opened.kind === 'reflowable' ? opened.epub : null
+  // A reflowable document has no page count, and saying 0 is honest: the
+  // toolbar reads `epubAt` for its position instead of inventing a page.
+  reader.pageCount = opened.kind === 'paged' ? opened.adapter.pageCount : 0
+  reader.epubAt = null
   reader.docId = rec.id
   reader.docName = rec.name
   reader.annotations = annotations
@@ -227,7 +257,11 @@ export function newAnnotation(
  */
 export function closeDoc() {
   reader.adapter?.destroy()
+  reader.epub?.destroy()
   reader.adapter = null
+  reader.epub = null
+  reader.epubAt = null
+  reader.format = null
   reader.docId = null
   reader.docName = ''
   reader.pageCount = 0

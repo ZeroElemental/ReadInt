@@ -6,6 +6,7 @@ import { ImageAdapter } from './ImageAdapter.ts'
 import { EpubAdapter } from './EpubAdapter.ts'
 
 export type { DocAdapter }
+export { EpubAdapter }
 
 export function detectFormat(file: File): DocFormat {
   const name = file.name.toLowerCase()
@@ -15,14 +16,30 @@ export function detectFormat(file: File): DocFormat {
   throw new Error(`Unsupported file: ${file.name}`)
 }
 
-export function openDocument(blob: Blob, format: DocFormat): Promise<DocAdapter> {
+/**
+ * What opening a document yields.
+ *
+ * A union rather than one interface, because the two halves share nothing: a
+ * paged document has a viewport, a raster and positioned text; a reflowable one
+ * has a rendition and a CFI. An interface spanning both would be optional
+ * members all the way down, and every consumer would branch anyway — so the
+ * branch is here, once, where it can be seen.
+ */
+export type OpenedDoc =
+  | { kind: 'paged'; adapter: DocAdapter }
+  | { kind: 'reflowable'; epub: EpubAdapter }
+
+export async function openDocument(
+  blob: Blob,
+  format: DocFormat,
+): Promise<OpenedDoc> {
   switch (format) {
     case 'pdf':
-      return PdfAdapter.open(blob)
+      return { kind: 'paged', adapter: await PdfAdapter.open(blob) }
     case 'image':
-      return ImageAdapter.open(blob)
+      return { kind: 'paged', adapter: await ImageAdapter.open(blob) }
     case 'epub':
-      return EpubAdapter.open(blob)
+      return { kind: 'reflowable', epub: await EpubAdapter.open(blob) }
   }
 }
 

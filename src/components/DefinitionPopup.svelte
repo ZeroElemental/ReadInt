@@ -51,6 +51,16 @@
   let card = $state<HTMLDivElement | null>(null)
 
   let inflight: AbortController | null = null
+  /**
+   * The section text behind a reflowable selection, set by `showAt`.
+   *
+   * EPUB has no `pageText` to ask, so the caller brings the haystack — but NOT
+   * the sentence. The cap stays in this file, applied by the same
+   * `sentenceAround` call the PDF path uses, because the comment at the top of
+   * this file is a promise and a caller-supplied sentence could quietly break
+   * it.
+   */
+  let reflowable: string | null = null
 
   /** The user's cancel, plus a deadline. Whichever fires first wins. */
   const deadline = (signal: AbortSignal) =>
@@ -59,6 +69,7 @@
   function dismiss() {
     inflight?.abort()
     inflight = null
+    reflowable = null
     anchor = null
     term = ''
     meaning = ''
@@ -99,6 +110,13 @@
     const rect = range.getBoundingClientRect()
     if (rect.width === 0 && rect.height === 0) return dismiss()
 
+    reflowable = null
+    place(selected, rect)
+    void lookUp(selected, Number(page.dataset.page))
+  }
+
+  /** Position the card against a viewport rect. Shared by both formats. */
+  function place(selected: string, rect: DOMRect) {
     const below = rect.top < HEADROOM
     term = selected
     anchor = {
@@ -106,7 +124,26 @@
       y: below ? rect.bottom : rect.top,
       below,
     }
-    void lookUp(selected, Number(page.dataset.page))
+  }
+
+  /**
+   * The reflowable entry point, called by EpubView.
+   *
+   * A selection inside epub.js's iframe is invisible to `getSelection()` up
+   * here, so EpubView reads it there and hands over the term, a rect already
+   * translated into this document's coordinates, and the section's text for
+   * context. Everything after that is the path a PDF takes.
+   */
+  export function showAt(
+    selected: string,
+    rect: DOMRect,
+    sectionText: string,
+    sectionIndex: number,
+  ) {
+    if (!selected || selected.length > MAX_TERM) return dismiss()
+    reflowable = sectionText
+    place(selected, rect)
+    void lookUp(selected, sectionIndex)
   }
 
   async function lookUp(selected: string, pageIndex: number) {
@@ -235,12 +272,17 @@
    * here, and do not join sentences to "give the model more to work with".
    */
   async function context(selected: string, pageIndex: number, docId: string): Promise<string> {
+    if (reflowable !== null) {
+      const [hit] = findAll(reflowable, selected)
+      return hit ? sentenceAround(reflowable, hit.start, hit.end) : ''
+    }
+
     const adapter = reader.adapter
     if (!adapter) return ''
     try {
       const items = await pageText(adapter, docId, pageIndex)
       const flat = flattenPage(items)
-      const [hit] = findAll(flat, selected)
+      const [hit] = findAll(flat.text, selected)
       return hit ? sentenceAround(flat.text, hit.start, hit.end) : ''
     } catch {
       // Context is a nicety; the term alone still gets a usable definition.
