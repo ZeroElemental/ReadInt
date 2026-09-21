@@ -86,6 +86,11 @@ These are load-bearing. Breaking one produces bugs that look like something else
    *separate* `drafts` record that is offered for recovery, never merged
    silently — otherwise "saved" stops meaning anything.
 
+   **One tab per document autosaves** (`src/lib/tablock.ts`, a Web Lock). Drafts
+   are keyed by docId, so two writers would silently replace each other's row. A
+   per-tab draft id would not fix that — recovery still has to pick ONE draft to
+   offer. The second tab still saves explicitly; it just does not back up.
+
 7. **`src/lib/storage.ts` is the only module that touches Dexie.** Annotations
    carry a stable `id` and `updatedAt`, so adding cloud sync later is one file
    plus a merge function, not a migration.
@@ -132,6 +137,7 @@ src/
     ocr.ts             tesseract boxes -> TextItem[] in page units (pure)
     tesseract.ts       the OCR worker; dynamic-import ONLY, never static
     epub-search.ts     section DOM -> string + offset map, back to a Range (pure)
+    tablock.ts         one autosaving tab per document, by Web Lock
   adapters/
     types.ts           DocAdapter interface + PageGeometry
     PdfAdapter.ts      pdf.js; also handles scanned PDFs via OCR
@@ -149,6 +155,7 @@ src/
     Toolbar.svelte / Library.svelte
 functions/
     src/index.ts       POST /api/define — the only server, no framework
+    src/gemini.ts      the model call + retry, fetch injected; tested (npm test)
 public/
     tessdata/          self-hosted wasm core + English model (see its README)
 ```

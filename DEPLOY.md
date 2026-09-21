@@ -234,6 +234,15 @@ than as a 404.
 local version only affects the local TypeScript build, so the mismatch is
 harmless — the CLI will print an `EBADENGINE` warning and you can ignore it.
 
+**A retired model is now visible, and retried once.** A `404` from Gemini —
+the answer for "no such model" — retries against `gemini-flash-latest`, and any
+failure returns Google's status and reason in the 502 body under `upstream`
+(the client also logs it), so it no longer lives only in `firebase functions:log`.
+The fallback alias has **not been exercised against this project's key** and is
+not the model `thinkingLevel: 'minimal'` was tuned on — if it ever fires, check
+the latency and the answers before trusting it. Tests: `cd functions && npm test`
+(Node 24; the deploy runtime, 22, cannot strip types).
+
 **The model id expires.** `functions/src/index.ts` names a specific Gemini
 model. `gemini-2.5-flash` was closed to new projects between that line being
 written and this project being created, and answered `404` with a pointer to

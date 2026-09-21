@@ -6,31 +6,40 @@ it is the handoff between sessions.
 For the plan — every phase, what it covers, what is left — see `ROADMAP.md`.
 For the architecture and its invariants, see `AGENTS.md`.
 
-**Status:** every phase is done. PDFs, scans, images and EPUB all read,
-annotate, search and define. Phases 0–5 are deployed; **Phase 6 is built and
-verified locally but not deployed yet**.
+**Status:** every roadmap phase is done, and Phase 7 (release hardening) is three
+of four built. Phases 0–5 are deployed; **Phases 6 and 7 are built and verified
+locally but not pushed or deployed**.
 **Last updated:** 2026-09-21
 
 ---
 
 ## Start here next session
 
-**Deploy Phase 6.** That is the only outstanding step; there is no Phase 7.
+**Push and deploy.** Two chores, both waiting on an explicit go because they are
+outward-facing:
 
 ```
+git push origin main          # GitHub is at the Phase 4 docs commit
 npm run build && firebase deploy --only hosting
+firebase deploy --only functions   # ONLY if you want #2's fix live
 ```
 
-After that the roadmap's phases are finished and what is left is the deferred
-backend work — accounts and sync, and the two issues filed on the way here:
-[#1](https://github.com/ZeroElemental/ReadInt/issues/1) for AI search over a
-document, [#2](https://github.com/ZeroElemental/ReadInt/issues/2) for the
-Gemini model id expiring behind a flat `502`.
+The push is the first time `public/tessdata/` (5.7MB of wasm and model) reaches
+GitHub; `.gitattributes` keeps the inlined wasm out of line-ending
+normalisation. After the hosting deploy, open an EPUB on the live URL and check a
+highlight survives a font-size change — the one behaviour a build cannot verify.
+
+**Then one decision:** Phase 7's last item, moving the rate limit off an
+in-memory `Map`, means creating a Firestore database in the live project. It was
+held for that reason rather than done as a side effect. After it comes Phase 8
+(export), which needs no backend, and Phases 9–10 (sync, the AI layer), which
+each need their own brainstorm. `ROADMAP.md` has the shape of all of them.
 
 Standing checks, all green as of this commit:
 
 ```
-npm test      # 44 passing (34 + 10 for EPUB search)
+npm test      # 52 passing (44 + 8 for the tab lock)
+cd functions && npm test   # 7 passing, on Node 24
 npm run check # 0 errors, 0 warnings
 npm run build # clean; pdf.js, tesseract and epub.js each split out
 cd functions && npx tsc --noEmit   # clean
@@ -593,6 +602,83 @@ with a twelve-chapter TOC, not a synthetic fixture.
 - **No spread toggle, magnifier or reading-direction effect** on EPUB: epub.js
   decides its own column count from the width, and an iframe cannot be
   rasterised to a canvas.
+
+---
+
+## Phase 7 — Release hardening ◐
+
+- [x] A retired Gemini model surfaces its cause, and retries once — #2, kept open
+- [x] One autosaving tab per document
+- [x] Keyboard access: `D` to define a selection, and the EPUB note editor
+- [ ] The rate limit off an in-memory `Map` — held for a Firestore decision
+
+**The Gemini call moved to `functions/src/gemini.ts` with `fetch` injected**, so
+a fake Google can drive it: no key, no network, no Firebase runtime. A `404` —
+Google's answer for "no such model" — retries once against
+`gemini-flash-latest`; nothing else is retried, because a 429 or a 500 would fail
+the same way against a second model and double the load on a service already
+refusing. When both fail the PRIMARY error is reported, since the fallback's is
+about the fallback. Google's status and reason come back in the 502 body under
+`upstream`, bounded to 200 characters, and the client logs them. It is Google's
+text about the request's shape, and it returns only to the client that sent the
+request — invariant 11 governs what leaves the device, not what returns.
+
+**One autosaving tab, and why a per-tab draft id would not have worked.** Drafts
+are keyed by docId, so two tabs shared a row and each 30-second autosave replaced
+the other's. A per-tab id stops the overwrite but not the loss: recovery still
+has to choose ONE draft to offer, and it would still be the last writer. The
+fix is to make there be one writer. A Web Lock lasts as long as the promise
+handed to `request` is pending, and the browser drops it when the tab closes or
+crashes, so there is no stale lock and no heartbeat. The tab that finds it taken
+does not autosave, says so, and **queues** for the lock — close the first tab
+and the second is promoted and its notice clears. Without that it would keep
+claiming another tab owned autosave long after there was no other tab.
+
+### Verified
+
+- **Seven tests** on the function: healthy primary called once; a 404 retries
+  once and returns the fallback's answer; when both are gone the primary's
+  failure is reported; 400/403/429/500/503 are NOT retried; Google's status enum
+  and message survive and are bounded; a non-JSON body is reported; a 200 with
+  only thinking parts is a failure, not a success.
+- **Eight tests** on the lock, against a fake `LockManager` with real queueing:
+  the first tab holds it and the second does not, documents never contend,
+  release frees it, a waiter is promoted the moment the holder lets go, a waiter
+  that gives up is never promoted, and promotion is in arrival order.
+- **Two real browser tabs** on one document, both dirty. After the autosave
+  interval the single draft row, written 2 seconds earlier, held tab 1's
+  highlight and **none** of tab 2's underline. Closing tab 1 cleared tab 2's
+  notice. The notices sit in one wrapper, because two conditional children of the
+  shell's `auto auto 1fr` grid would let the content fall into an implicit
+  fourth row — the trap that collapsed the EPUB surface.
+- **A keyboard audit against the running app** found two real gaps and disproved
+  a third. Definitions fired only on `pointerup`, so a keyboard reader could not
+  ask for one; the EPUB note editor opened with focus left on `<body>` and
+  ignored Escape. Both are fixed and measured: `D` opens the card with focus
+  inside it, in a PDF and inside epub.js's iframe, and works under any tool
+  because it is an explicit ask. The suspected third — keys inside the iframe
+  never reaching the shell — was **wrong**: three ArrowRight presses moved the
+  reading position by exactly 3% whether dispatched at the window or at the
+  iframe's document. Nothing was changed there.
+- The request for focus travels **with the call** and dies with its card. A
+  flag that outlived a fruitless `D` would let the next card, opened by a mouse,
+  yank focus off the text mid-gesture; a mouse selection after a `D` on nothing
+  was checked and does not.
+
+### Known limitations
+
+- **The fallback model has never run.** It is an alias so it survives the next
+  retirement without an edit, but it has not been exercised against this
+  project's key and is not what `thinkingLevel: 'minimal'` was tuned on (1.8–2.2
+  s). If it ever fires, check the latency and the answers.
+- **The function is not redeployed.** #2 stays open until it is, and until the
+  fallback has actually been seen to work.
+- **Still pointer-only:** placing a note on a PDF, erasing an EPUB mark (epub.js
+  owns the element), and making a selection without caret browsing. `D` covers
+  what happens after.
+- **Without Web Locks** (an old browser, a non-secure context) two tabs can
+  still overwrite each other's draft. Losing the guard was judged better than
+  refusing to autosave.
 
 ---
 

@@ -18,6 +18,7 @@ never scoped as a phase.
 | 4 | Definitions, in-document search, first deploy | ✅ Done |
 | 5 | OCR for scanned PDFs and images | ✅ Done |
 | 6 | EPUB | ✅ Done |
+| 7 | Release hardening | ◐ 3 of 4 built — the rate limit waits on a Firestore decision |
 | — | Deferred: sync, AI study layer, export, analytics | ⬜ Needs a backend |
 
 The order is deliberate. Each phase depends on the one before it being *proven*,
@@ -190,6 +191,33 @@ body was exactly `{term, sentence}`.
 
 ---
 
+## Phase 7 — Release hardening ◐
+
+Four real defects, no new features.
+
+- [x] **A retired Gemini model no longer hides behind a flat `502`** —
+      [#2](https://github.com/ZeroElemental/ReadInt/issues/2). Google's status
+      and reason travel back in the response body, and a `404` retries once
+      against `gemini-flash-latest`. **Built, not deployed, and the fallback has
+      never run against the project's real key** — the issue stays open until
+      it has.
+- [x] **One autosaving tab per document**, by Web Lock. A second tab still saves
+      explicitly, says it is not backed up, and takes over if the first closes.
+- [x] **Keyboard access:** `D` defines the current selection and moves focus into
+      the card; the EPUB note editor takes focus and closes on Escape.
+- [ ] **The rate limit is still per instance.** Moving it to Firestore means
+      creating a database in the live project — provisioning, IAM and a billing
+      surface — so it is held for an explicit decision rather than done as a
+      side effect of a hardening pass.
+
+**Proven by:** seven tests driving a fake Gemini through the retired-model and
+ordinary-failure branches; eight tests on the lock's queueing and abort
+semantics; and two real browser tabs on one document, where the draft written
+after both went dirty held only the first tab's highlight and none of the
+second's underline, and closing the owner cleared the other's notice.
+
+---
+
 ## Deferred — needs a real backend
 
 Not scoped. Recorded so the architecture stays ready: stable annotation ids and
@@ -213,12 +241,14 @@ in place for it.
 - **EPUB generates a locations index on first open**, searches by loading every
   section, and redraws its marks on a timer after a font change because epub.js
   offers no "reflow finished" signal. Full list under Phase 6.
-- **Two tabs on one document share a `drafts` row** and overwrite each other's
-  autosave. Out of scope while the app is single-device; wants a tab lock or a
-  per-tab draft id when sync arrives.
-- **Notes are placed by pointer only.** Placing something at an arbitrary point
-  has no sensible keyboard equivalent; the marks themselves are reachable, and
-  erase targets are real focusable buttons.
+- **Some things are still pointer-only.** Placing a note on a PDF has no sensible
+  keyboard equivalent (the marks themselves are reachable, and erase targets are
+  real focusable buttons); an EPUB mark can be erased only by clicking it, since
+  epub.js owns the element; and making a selection at all needs caret browsing
+  (F7) or a pointer. `D` then defines it from the keyboard.
+- **A second tab on one document does not autosave.** By design — see Phase 7.
+  Without Web Locks (an old browser, or a non-secure context) the old behaviour
+  stands and two tabs can overwrite each other's draft.
 - **Line grouping uses a fixed 1.5 pt baseline tolerance.** Fine for body text;
   a document mixing very large and very small type on one line could split it.
 - **A search hit is sliced proportionally across its run**, so its box assumes
