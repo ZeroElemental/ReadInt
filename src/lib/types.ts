@@ -27,6 +27,16 @@ export interface DocumentRecord {
   addedAt: number
   lastOpenedAt: number
   lastPageIndex: number
+  /**
+   * EPUB only. Reflowable text has no page to remember, so the position is a
+   * CFI — it survives a font-size change, which a page index could not.
+   */
+  lastCfi?: string
+  /**
+   * EPUB only. `book.locations` serialised. Generating it parses every section,
+   * so it is paid once per document and read back from here after that.
+   */
+  locations?: string
 }
 
 /** One extracted word/run, positioned in page units. */
@@ -74,9 +84,15 @@ export interface Annotation {
  * confused with a highlight.
  */
 export interface SearchHit {
+  /** Paged documents: the page. EPUB: the spine index, for ordering only. */
   pageIndex: number
-  /** One quad per line the hit spans, in page units. */
-  quads: Quad[]
+  /**
+   * One quad per line the hit spans, in page units. Absent on EPUB, where
+   * there is no page geometry to draw on — `cfi` locates the hit instead.
+   */
+  quads?: Quad[]
+  /** EPUB: the CFI range to display. Absent on paged documents. */
+  cfi?: string
   /** Surrounding text for the results list. */
   snippet: string
 }

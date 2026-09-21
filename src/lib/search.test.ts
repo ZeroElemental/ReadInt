@@ -29,14 +29,14 @@ test('a hyphen at a line break is dropped, so the word is whole again', () => {
   const items = [run('under-', 72, 0), run('stand', 72, 1)]
 
   assert.equal(flatOf(items), 'understand')
-  assert.equal(findAll(flattenPage(items), 'understand').length, 1)
+  assert.equal(findAll(flattenPage(items).text, 'understand').length, 1)
 })
 
 test('a line break without a hyphen still separates two words', () => {
   const items = [run('reading', 72, 0), run('platform', 72, 1)]
 
   assert.equal(flatOf(items), 'reading platform')
-  assert.equal(findAll(flattenPage(items), 'readingplatform').length, 0)
+  assert.equal(findAll(flattenPage(items).text, 'readingplatform').length, 0)
 })
 
 test('runs split mid-word are joined without a space; a real gap keeps one', () => {
@@ -68,7 +68,7 @@ test('case, diacritics and ligatures all fold away', () => {
 
   for (const [typeset, typed] of cases) {
     const flat = flattenPage([run(typeset, 72)])
-    assert.equal(findAll(flat, typed).length, 1, `"${typed}" did not find "${typeset}"`)
+    assert.equal(findAll(flat.text, typed).length, 1, `"${typed}" did not find "${typeset}"`)
   }
 })
 
@@ -84,7 +84,7 @@ test('folding maps every character back to the one that produced it', () => {
 test('a hit maps back to a proportional slice of its run', () => {
   const items = [run('abcdefghij', 100, 0, 100)]
   const flat = flattenPage(items)
-  const [hit] = findAll(flat, 'cde')
+  const [hit] = findAll(flat.text, 'cde')
 
   assert.deepEqual(hit, { start: 2, end: 5 })
 
@@ -97,7 +97,7 @@ test('a hit maps back to a proportional slice of its run', () => {
 test('a hit spanning a line break draws one quad per line', () => {
   const items = [run('under-', 72, 0), run('stand', 72, 1)]
   const flat = flattenPage(items)
-  const [hit] = findAll(flat, 'understand')
+  const [hit] = findAll(flat.text, 'understand')
 
   const quads = hitQuads(items, flat, hit.start, hit.end)
   assert.equal(quads.length, 2, 'a wrapped hit must not merge into one box')

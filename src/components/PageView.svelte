@@ -63,7 +63,9 @@
   const hitRects = $derived(
     vp
       ? reader.hits.flatMap((hit, i) =>
-          hit.pageIndex === pageIndex
+          // `quads` is absent on a reflowable hit, which this layer can never
+          // be asked to draw — but the type is honest about it, so this is too.
+          hit.pageIndex === pageIndex && hit.quads
             ? hit.quads.map((q) => ({ box: quadToScreen(q, vp!), current: i === reader.activeHit }))
             : [],
         )

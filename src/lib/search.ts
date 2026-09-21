@@ -176,17 +176,23 @@ export function normalize(s: string): Norm {
 }
 
 /**
- * Every occurrence of `query`, as ranges into `flat.text` (the RAW string, not
- * the folded one — callers map those to quads and to context sentences).
+ * Every occurrence of `query`, as ranges into `text` (the RAW string, not the
+ * folded one — callers map those to quads and to context sentences).
+ *
+ * Takes a plain string rather than a `Flat` because that is all it ever read,
+ * and because EPUB has no `Flat` to give it: a section's text comes from its
+ * DOM, not from positioned runs. Both formats therefore share this, `normalize`
+ * and `sentenceAround` — which matters most for the last one, since MAX_CONTEXT
+ * is the privacy boundary in invariant 11 and two copies of it could drift.
  */
 export function findAll(
-  flat: Flat,
+  text: string,
   query: string,
 ): { start: number; end: number }[] {
   const needle = normalize(query)
   if (!needle.text) return []
 
-  const hay = normalize(flat.text)
+  const hay = normalize(text)
   const hits: { start: number; end: number }[] = []
 
   let at = hay.text.indexOf(needle.text)
